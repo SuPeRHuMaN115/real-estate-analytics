@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real Estate Comps & Valuation App</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50">
+    <div id="app"></div>
+
+    <script>
+        const properties = [
+            {
+                id: "1", address: "123 Maple Street", city: "Springfield", state: "IL", zipCode: "62701",
+                price: 350000, bedrooms: 3, bathrooms: 2, squareFeet: 1800, lotSize: 7200, yearBuilt: 2015,
+                propertyType: "Single Family", status: "Active", listDate: "2025-09-15", daysOnMarket: 35,
+                description: "Beautiful single-family home with modern updates and spacious backyard",
+                features: ["Granite Counters", "Hardwood Floors", "Central AC", "2-Car Garage", "Fenced Yard"],
+                images: ["https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=800"]
+            },
+            {
+                id: "2", address: "456 Oak Avenue", city: "Springfield", state: "IL", zipCode: "62702",
+                price: 425000, bedrooms: 4, bathrooms: 2.5, squareFeet: 2200, lotSize: 8500, yearBuilt: 2018,
+                propertyType: "Single Family", status: "Active", listDate: "2025-10-01", daysOnMarket: 19,
+                description: "Stunning 4-bedroom home in desirable neighborhood with open floor plan",
+                features: ["Stainless Steel Appliances", "Walk-in Closets", "Fireplace", "Deck", "Smart Home"],
+                images: ["https://images.unsplash.com/photo-1570129477492-45c003edd2be?w=800"]
+            },
+            {
+                id: "3", address: "789 Pine Road", city: "Springfield", state: "IL", zipCode: "62703",
+                price: 385000, bedrooms: 3, bathrooms: 2, squareFeet: 1950, lotSize: 7800, yearBuilt: 2016,
+                propertyType: "Single Family", status: "Sold", listDate: "2025-08-10", soldDate: "2025-09-20", daysOnMarket: 41,
+                description: "Recently sold home with updated kitchen and finished basement",
+                features: ["Updated Kitchen", "Finished Basement", "Energy Efficient", "New Roof"],
+                images: ["https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=800"]
+            },
+            {
+                id: "4", address: "234 Elm Street", city: "Springfield", state: "IL", zipCode: "62701",
+                price: 310000, bedrooms: 3, bathrooms: 2, squareFeet: 1650, lotSize: 6500, yearBuilt: 2012,
+                propertyType: "Single Family", status: "Sold", listDate: "2025-07-15", soldDate: "2025-08-30", daysOnMarket: 46,
+                description: "Charming home with vaulted ceilings and large master suite",
+                features: ["Vaulted Ceilings", "Master Suite", "Covered Patio", "Garden"],
+                images: ["https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=800"]
+            },
+            {
+                id: "5", address: "567 Birch Lane", city: "Springfield", state: "IL", zipCode: "62702",
+                price: 475000, bedrooms: 4, bathrooms: 3, squareFeet: 2500, lotSize: 9200, yearBuilt: 2020,
+                propertyType: "Single Family", status: "Active", listDate: "2025-09-25", daysOnMarket: 25,
+                description: "Luxury home with premium finishes and smart home technology",
+                features: ["Quartz Counters", "Smart Home", "Premium Appliances", "3-Car Garage", "Pool"],
+                images: ["https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=800"]
+            },
+            {
+                id: "6", address: "890 Cedar Drive", city: "Springfield", state: "IL", zipCode: "62703",
+                price: 295000, bedrooms: 2, bathrooms: 2, squareFeet: 1400, lotSize: 0, yearBuilt: 2017,
+                propertyType: "Condo", status: "Active", listDate: "2025-10-05", daysOnMarket: 15,
+                description: "Modern condo with amenities including pool and fitness center",
+                features: ["Pool Access", "Fitness Center", "Balcony", "In-Unit Laundry", "Parking"],
+                images: ["https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=800"]
+            }
+        ];
+
+        let currentTab = 'listings';
+        let selectedProperty = null;
+        let searchQuery = '';
+        let filters = {};
+
+        function getPricePerSquareFoot(property) {
+            return Math.round(property.price / property.squareFeet);
+        }
+
+        function calculateSimilarity(subject, comparable) {
+            let score = 100;
+            if (subject.zipCode !== comparable.zipCode) score -= 15;
+            if (subject.city !== comparable.city) score -= 15;
+            if (subject.propertyType !== comparable.propertyType) score -= 20;
+            const bedroomDiff = Math.abs(subject.bedrooms - comparable.bedrooms);
+            score -= Math.min(bedroomDiff * 5, 15);
+            const bathroomDiff = Math.abs(subject.bathrooms - comparable.bathrooms);
+            score -= Math.min(bathroomDiff * 5, 10);
+            const sqftDiff = Math.abs(subject.squareFeet - comparable.squareFeet);
+            const sqftPercentDiff = sqftDiff / subject.squareFeet;
+            score -= Math.min(sqftPercentDiff * 100, 15);
+            const ageDiff = Math.abs(subject.yearBuilt - comparable.yearBuilt);
+            score -= Math.min(ageDiff / 2, 10);
+            return Math.max(0, Math.round(score));
+        }
+
+        function findComparables(subject) {
+            return properties
+                .filter(p => p.id !== subject.id && (p.status === 'Sold' || p.status === 'Active'))
+                .map(p => ({
+                    ...p,
+                    similarity: calculateSimilarity(subject, p)
+                }))
+                .sort((a, b) => b.similarity - a.similarity)
+                .slice(0, 5);
+        }
+
+        function performCMA(subject) {
+            const comparables = findComparables(subject);
+            if (comparables.length === 0) {
+                return { estimatedValue: subject.price, confidenceLevel: 'Low', comparables: [] };
+            }
+            const weightedSum = comparables.reduce((sum, comp, index) => {
+                const weight = 1 / (index + 1);
+                return sum + (comp.price * comp.similarity / 100 * weight);
+            }, 0);
+            const totalWeight = comparables.reduce((sum, _, index) => sum + (1 / (index + 1)), 0);
+            const estimatedValue = Math.round(weightedSum / totalWeight);
+            const avgSimilarity = comparables.reduce((sum, c) => sum + c.similarity, 0) / comparables.length;
+            const confidenceLevel = avgSimilarity >= 80 && comparables.length >= 3 ? 'High' :
+                                   avgSimilarity >= 60 && comparables.length >= 2 ? 'Medium' : 'Low';
+            return { estimatedValue, confidenceLevel, comparables };
+        }
+
+        function renderPropertyCard(property) {
+            const pricePerSqft = getPricePerSquareFoot(property);
+            const statusColors = {
+                'Active': 'bg-green-500',
+                'Pending': 'bg-yellow-500',
+                'Sold': 'bg-blue-500',
+                'Off Market': 'bg-gray-500'
+            };
+
+            return `
+                <div class="border rounded-lg overflow-hidden shadow-lg hover:shadow-xl transition-shadow">
+                    <div class="relative">
+                        <img src="${property.images[0]}" alt="${property.address}" class="w-full h-48 object-cover">
+                        <div class="absolute top-2 right-2 px-3 py-1 rounded-full text-white text-sm font-semibold ${statusColors[property.status]}">
+                            ${property.status}
+                        </div>
+                    </div>
+                    <div class="p-4">
+                        <div class="mb-2">
+                            <h3 class="font-bold text-xl text-gray-900">$${property.price.toLocaleString()}</h3>
+                            <p class="text-sm text-gray-600">$${pricePerSqft}/sqft</p>
+                        </div>
+                        <p class="text-gray-700 font-medium mb-2">${property.address}</p>
+                        <p class="text-gray-600 text-sm mb-3">${property.city}, ${property.state} ${property.zipCode}</p>
+                        <div class="flex gap-4 mb-3 text-sm text-gray-700">
+                            <div><span class="font-semibold">${property.bedrooms}</span> bed</div>
+                            <div><span class="font-semibold">${property.bathrooms}</span> bath</div>
+                            <div><span class="font-semibold">${property.squareFeet.toLocaleString()}</span> sqft</div>
+                        </div>
+                        <div class="flex gap-2 mb-3 text-xs text-gray-600">
+                            <span class="bg-gray-100 px-2 py-1 rounded">${property.propertyType}</span>
+                            <span class="bg-gray-100 px-2 py-1 rounded">Built ${property.yearBuilt}</span>
+                            ${property.daysOnMarket ? `<span class="bg-gray-100 px-2 py-1 rounded">${property.daysOnMarket} DOM</span>` : ''}
+                        </div>
+                        <div class="mt-2 grid grid-cols-2 gap-2">
+                            <button onclick="viewComps('${property.id}')" class="px-3 py-2 bg-blue-600 text-white rounded text-sm font-medium hover:bg-blue-700">
+                                View Comps
+                            </button>
+                            <button onclick="getValuation('${property.id}')" class="px-3 py-2 bg-green-600 text-white rounded text-sm font-medium hover:bg-green-700">
+                                Get Valuation
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function viewComps(propertyId) {
+            selectedProperty = properties.find(p => p.id === propertyId);
+            currentTab = 'compare';
+            render();
+        }
+
+        function getValuation(propertyId) {
+            selectedProperty = properties.find(p => p.id === propertyId);
+            currentTab = 'valuation';
+            render();
+        }
+
+        function renderComparisonView() {
+            const comparables = findComparables(selectedProperty);
+
+            return `
+                <div class="bg-white rounded-lg shadow-lg p-6">
+                    <button onclick="currentTab='listings'; render();" class="mb-4 text-blue-600 hover:text-blue-700 font-medium">
+                        ← Back to Listings
+                    </button>
+                    <h2 class="text-2xl font-bold mb-6">Comparable Properties Analysis</h2>
+
+                    <div class="mb-6 bg-blue-50 p-4 rounded-lg">
+                        <h3 class="font-semibold text-lg mb-2">Subject Property</h3>
+                        <p class="font-medium">${selectedProperty.address}</p>
+                        <p class="text-sm text-gray-600">${selectedProperty.city}, ${selectedProperty.state} ${selectedProperty.zipCode}</p>
+                        <div class="mt-2 flex gap-4 text-sm">
+                            <span>${selectedProperty.bedrooms} bed</span>
+                            <span>${selectedProperty.bathrooms} bath</span>
+                            <span>${selectedProperty.squareFeet.toLocaleString()} sqft</span>
+                            <span>Built ${selectedProperty.yearBuilt}</span>
+                        </div>
+                        <p class="mt-2 text-xl font-bold">$${selectedProperty.price.toLocaleString()}</p>
+                    </div>
+
+                    <div class="space-y-4">
+                        ${comparables.map((comp, index) => {
+                            const similarityColor = comp.similarity >= 80 ? 'bg-green-100 text-green-800' :
+                                                   comp.similarity >= 60 ? 'bg-yellow-100 text-yellow-800' :
+                                                   'bg-red-100 text-red-800';
+                            return `
+                                <div class="border rounded-lg p-4">
+                                    <div class="flex justify-between items-start mb-3">
+                                        <div class="flex-1">
+                                            <div class="flex items-center gap-3 mb-2">
+                                                <span class="bg-blue-600 text-white px-2 py-1 rounded text-sm font-semibold">
+                                                    Comp #${index + 1}
+                                                </span>
+                                                <span class="px-2 py-1 rounded text-sm font-semibold ${similarityColor}">
+                                                    ${comp.similarity}% Match
+                                                </span>
+                                            </div>
+                                            <p class="font-medium">${comp.address}</p>
+                                            <p class="text-sm text-gray-600">${comp.city}, ${comp.state} ${comp.zipCode}</p>
+                                        </div>
+                                        <div class="text-right">
+                                            <p class="text-lg font-bold">$${comp.price.toLocaleString()}</p>
+                                            <p class="text-sm text-gray-600">$${getPricePerSquareFoot(comp)}/sqft</p>
+                                        </div>
+                                    </div>
+                                    <div class="grid grid-cols-4 gap-3 text-sm">
+                                        <div class="bg-gray-50 p-2 rounded">
+                                            <span class="text-gray-600">Beds:</span>
+                                            <span class="ml-1 font-semibold">${comp.bedrooms}</span>
+                                        </div>
+                                        <div class="bg-gray-50 p-2 rounded">
+                                            <span class="text-gray-600">Baths:</span>
+                                            <span class="ml-1 font-semibold">${comp.bathrooms}</span>
+                                        </div>
+                                        <div class="bg-gray-50 p-2 rounded">
+                                            <span class="text-gray-600">Sqft:</span>
+                                            <span class="ml-1 font-semibold">${comp.squareFeet.toLocaleString()}</span>
+                                        </div>
+                                        <div class="bg-gray-50 p-2 rounded">
+                                            <span class="text-gray-600">Built:</span>
+                                            <span class="ml-1 font-semibold">${comp.yearBuilt}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderValuationView() {
+            const result = performCMA(selectedProperty);
+            const confidenceColors = {
+                'High': 'bg-green-100 text-green-800',
+                'Medium': 'bg-yellow-100 text-yellow-800',
+                'Low': 'bg-red-100 text-red-800'
+            };
+
+            return `
+                <div class="bg-white rounded-lg shadow-lg p-6">
+                    <button onclick="currentTab='listings'; render();" class="mb-4 text-blue-600 hover:text-blue-700 font-medium">
+                        ← Back to Listings
+                    </button>
+                    <h2 class="text-2xl font-bold mb-6">Property Valuation</h2>
+
+                    <div class="mb-6 bg-gray-50 p-4 rounded-lg">
+                        <h3 class="font-semibold text-lg mb-2">Property Details</h3>
+                        <p class="font-medium">${selectedProperty.address}</p>
+                        <p class="text-sm text-gray-600">${selectedProperty.city}, ${selectedProperty.state} ${selectedProperty.zipCode}</p>
+                        <div class="mt-2 flex flex-wrap gap-3 text-sm">
+                            <span class="bg-white px-3 py-1 rounded">${selectedProperty.bedrooms} bed</span>
+                            <span class="bg-white px-3 py-1 rounded">${selectedProperty.bathrooms} bath</span>
+                            <span class="bg-white px-3 py-1 rounded">${selectedProperty.squareFeet.toLocaleString()} sqft</span>
+                            <span class="bg-white px-3 py-1 rounded">${selectedProperty.propertyType}</span>
+                            <span class="bg-white px-3 py-1 rounded">Built ${selectedProperty.yearBuilt}</span>
+                        </div>
+                        <p class="mt-3 text-sm text-gray-600">
+                            List Price: <span class="font-bold text-gray-900 text-lg">$${selectedProperty.price.toLocaleString()}</span>
+                        </p>
+                    </div>
+
+                    <div class="bg-blue-50 p-6 rounded-lg mb-6">
+                        <div class="flex items-center justify-between mb-3">
+                            <h3 class="text-lg font-semibold text-gray-700">Estimated Value (CMA)</h3>
+                            <span class="px-3 py-1 rounded-full text-sm font-semibold ${confidenceColors[result.confidenceLevel]}">
+                                ${result.confidenceLevel} Confidence
+                            </span>
+                        </div>
+                        <p class="text-4xl font-bold text-blue-900 mb-2">$${result.estimatedValue.toLocaleString()}</p>
+                        <p class="text-sm text-gray-600">Method: Comparative Market Analysis</p>
+
+                        ${result.estimatedValue !== selectedProperty.price ? `
+                            <div class="mt-4 pt-4 border-t border-blue-200">
+                                <div class="flex justify-between items-center">
+                                    <span class="text-sm text-gray-700">Compared to List Price:</span>
+                                    <span class="text-lg font-bold ${result.estimatedValue > selectedProperty.price ? 'text-green-600' : 'text-red-600'}">
+                                        ${result.estimatedValue > selectedProperty.price ? '+' : ''}$${(result.estimatedValue - selectedProperty.price).toLocaleString()}
+                                        (${(((result.estimatedValue - selectedProperty.price) / selectedProperty.price) * 100).toFixed(1)}%)
+                                    </span>
+                                </div>
+                            </div>
+                        ` : ''}
+                    </div>
+
+                    ${result.comparables && result.comparables.length > 0 ? `
+                        <div>
+                            <h3 class="font-semibold mb-3">Comparables Used (${result.comparables.length})</h3>
+                            <div class="space-y-2">
+                                ${result.comparables.map(comp => `
+                                    <div class="bg-gray-50 p-3 rounded flex justify-between items-center">
+                                        <div>
+                                            <p class="font-medium text-sm">${comp.address}</p>
+                                            <p class="text-xs text-gray-600">
+                                                ${comp.bedrooms} bed, ${comp.bathrooms} bath, ${comp.squareFeet.toLocaleString()} sqft
+                                            </p>
+                                        </div>
+                                        <div class="text-right">
+                                            <p class="font-semibold">$${comp.price.toLocaleString()}</p>
+                                            <p class="text-xs text-gray-600">${comp.similarity}% match</p>
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+
+        function render() {
+            const avgPrice = Math.round(properties.reduce((sum, p) => sum + p.price, 0) / properties.length);
+            const prices = properties.map(p => p.price).sort((a, b) => a - b);
+            const medianPrice = Math.round(prices[Math.floor(prices.length / 2)]);
+
+            const html = `
+                <div class="min-h-screen bg-gray-50">
+                    <header class="bg-white shadow-sm border-b">
+                        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+                            <h1 class="text-3xl font-bold text-gray-900">Real Estate Comps & Valuation</h1>
+                            <p class="mt-1 text-sm text-gray-600">Analyze comparable properties and calculate accurate valuations</p>
+                        </div>
+                    </header>
+
+                    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                        ${currentTab === 'listings' ? `
+                            <div class="bg-white rounded-lg shadow-sm p-6 mb-6">
+                                <h2 class="text-lg font-semibold mb-4">Market Overview</h2>
+                                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                                    <div class="text-center">
+                                        <p class="text-sm text-gray-600">Properties</p>
+                                        <p class="text-2xl font-bold text-gray-900">${properties.length}</p>
+                                    </div>
+                                    <div class="text-center">
+                                        <p class="text-sm text-gray-600">Avg Price</p>
+                                        <p class="text-2xl font-bold text-gray-900">$${(avgPrice / 1000).toFixed(0)}K</p>
+                                    </div>
+                                    <div class="text-center">
+                                        <p class="text-sm text-gray-600">Median Price</p>
+                                        <p class="text-2xl font-bold text-gray-900">$${(medianPrice / 1000).toFixed(0)}K</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="mb-6">
+                                <input type="text" placeholder="Search by address, city, or zip code..."
+                                       class="w-full px-4 py-3 border rounded-lg shadow-sm"
+                                       oninput="searchQuery = this.value; render();">
+                            </div>
+
+                            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                ${properties.map(renderPropertyCard).join('')}
+                            </div>
+                        ` : currentTab === 'compare' ? renderComparisonView() : renderValuationView()}
+                    </main>
+
+                    <footer class="bg-white border-t mt-12">
+                        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+                            <p class="text-center text-sm text-gray-600">
+                                Real Estate Comps & Valuation App - Powered by CMA and Market Analysis
+                            </p>
+                        </div>
+                    </footer>
+                </div>
+            `;
+
+            document.getElementById('app').innerHTML = html;
+        }
+
+        // Initial render
+        render();
+    </script>
+</body>
+</html>
