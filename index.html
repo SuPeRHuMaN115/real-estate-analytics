@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real Estate Comps & Valuation App</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50">
+    <div id="app"></div>
+
+    <script>
+        // Load properties from localStorage
+        function loadProperties() {
+            const saved = localStorage.getItem('realEstateProperties');
+            return saved ? JSON.parse(saved) : [];
+        }
+
+        function saveProperties() {
+            localStorage.setItem('realEstateProperties', JSON.stringify(properties));
+        }
+
+        let properties = loadProperties();
+        let currentTab = 'listings';
+        let selectedProperty = null;
+        let showAddForm = false;
+        let showQuickAdd = false;
+        let editingProperty = null;
+
+        // Smart local text parser - NO API NEEDED!
+        function parsePropertyFromText(text) {
+            const parsed = {};
+
+            // Price patterns: $350,000 or $350k or 350000
+            const priceMatch = text.match(/\$?\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\s*k?|\$\s*(\d+)/i);
+            if (priceMatch) {
+                let price = priceMatch[1] || priceMatch[2];
+                price = price.replace(/,/g, '');
+                if (text.toLowerCase().includes('k') && !text.toLowerCase().includes('000')) {
+                    price = parseFloat(price) * 1000;
+                }
+                parsed.price = Math.round(parseFloat(price));
+            }
+
+            // Bedrooms: "3 bed" or "3 bedroom" or "3br"
+            const bedMatch = text.match(/(\d+)\s*(?:bed|bedroom|br|bd)/i);
+            if (bedMatch) {
+                parsed.bedrooms = parseInt(bedMatch[1]);
+            }
+
+            // Bathrooms: "2 bath" or "2.5 bathroom" or "2.5ba"
+            const bathMatch = text.match(/(\d+(?:\.\d+)?)\s*(?:bath|bathroom|ba)/i);
+            if (bathMatch) {
+                parsed.bathrooms = parseFloat(bathMatch[1]);
+            }
+
+            // Square feet: "1800 sqft" or "1,800 sq ft" or "1800 square feet"
+            const sqftMatch = text.match(/(\d{1,3}(?:,\d{3})*)\s*(?:sqft|sq\.?\s*ft|square\s*feet|sf)/i);
+            if (sqftMatch) {
+                parsed.squareFeet = parseInt(sqftMatch[1].replace(/,/g, ''));
+            }
+
+            // Year built: "built 2015" or "built in 2015" or just "2015" near "built"
+            const yearMatch = text.match(/(?:built|year|blt)(?:\s+in)?\s*(\d{4})/i) ||
+                             text.match(/\b(19\d{2}|20[0-2]\d)\b/);
+            if (yearMatch) {
+                const year = parseInt(yearMatch[1]);
+                if (year >= 1900 && year <= new Date().getFullYear()) {
+                    parsed.yearBuilt = year;
+                }
+            }
+
+            // Lot size: "7200 lot" or "0.25 acre"
+            const lotMatch = text.match(/(\d{1,3}(?:,\d{3})*)\s*(?:lot|sf\s*lot)/i);
+            if (lotMatch) {
+                parsed.lotSize = parseInt(lotMatch[1].replace(/,/g, ''));
+            }
+            const acreMatch = text.match(/(\d+(?:\.\d+)?)\s*acre/i);
+            if (acreMatch && !parsed.lotSize) {
+                parsed.lotSize = Math.round(parseFloat(acreMatch[1]) * 43560); // Convert acres to sqft
+            }
+
+            // Property type
+            if (/\b(?:single[\s-]?family|sfh|sfr|house)\b/i.test(text)) {
+                parsed.propertyType = 'Single Family';
+            } else if (/\bcondo(?:minium)?\b/i.test(text)) {
+                parsed.propertyType = 'Condo';
+            } else if (/\btownhouse|townhome\b/i.test(text)) {
+                parsed.propertyType = 'Townhouse';
+            } else if (/\bmulti[\s-]?family|duplex|triplex\b/i.test(text)) {
+                parsed.propertyType = 'Multi-Family';
+            }
+
+            // Status
+            if (/\b(?:for sale|active|listing|available)\b/i.test(text)) {
+                parsed.status = 'Active';
+            } else if (/\bpending|under contract\b/i.test(text)) {
+                parsed.status = 'Pending';
+            } else if (/\bsold|closed\b/i.test(text)) {
+                parsed.status = 'Sold';
+            }
+
+            // Days on market
+            const domMatch = text.match(/(\d+)\s*(?:days?\s*on\s*market|dom)/i);
+            if (domMatch) {
+                parsed.daysOnMarket = parseInt(domMatch[1]);
+            }
+
+            // Address, City, State, Zip
+            // Pattern: "123 Main St, Chicago, IL 60601" or "123 Main St Chicago IL 60601"
+            const addressMatch = text.match(/(\d+\s+[A-Za-z0-9\s]+?)(?:,\s*|\s+)([A-Za-z\s]+?)(?:,\s*|\s+)([A-Z]{2})(?:,?\s+|\s+)(\d{5})/i);
+            if (addressMatch) {
+                parsed.address = addressMatch[1].trim();
+                parsed.city = addressMatch[2].trim();
+                parsed.state = addressMatch[3].toUpperCase();
+                parsed.zipCode = addressMatch[4];
+            } else {
+                // Try simpler patterns
+                const zipMatch = text.match(/\b(\d{5})\b/);
+                if (zipMatch) parsed.zipCode = zipMatch[1];
+
+                const stateMatch = text.match(/\b([A-Z]{2})\b/);
+                if (stateMatch) parsed.state = stateMatch[1];
+
+                // Try to find address at start
+                const streetMatch = text.match(/^(\d+\s+[A-Za-z0-9\s\.]+?)(?:,|\s{2,})/);
+                if (streetMatch) parsed.address = streetMatch[1].trim();
+            }
+
+            // Extract features (keywords)
+            const features = [];
+            const featureKeywords = [
+                'granite', 'hardwood', 'stainless', 'updated', 'renovated', 'fireplace',
+                'garage', 'pool', 'deck', 'patio', 'basement', 'ac', 'air conditioning',
+                'central', 'new roof', 'smart home', 'solar', 'vaulted', 'walk-in closet'
+            ];
+
+            featureKeywords.forEach(keyword => {
+                const regex = new RegExp(keyword, 'i');
+                if (regex.test(text)) {
+                    features.push(keyword.charAt(0).toUpperCase() + keyword.slice(1));
+                }
+            });
+            if (features.length > 0) {
+                parsed.features = features.slice(0, 5); // Limit to 5
+            }
+
+            // Description - take first sentence or up to 150 chars
+            const sentences = text.match(/[^.!?]+[.!?]+/g);
+            if (sentences && sentences.length > 0) {
+                parsed.description = sentences[0].trim().substring(0, 150);
+            }
+
+            return parsed;
+        }
+
+        function getPricePerSquareFoot(property) {
+            return Math.round(property.price / property.squareFeet);
+        }
+
+        function calculateSimilarity(subject, comparable) {
+            let score = 100;
+            if (subject.zipCode !== comparable.zipCode) score -= 15;
+            if (subject.city !== comparable.city) score -= 15;
+            if (subject.propertyType !== comparable.propertyType) score -= 20;
+            const bedroomDiff = Math.abs(subject.bedrooms - comparable.bedrooms);
+            score -= Math.min(bedroomDiff * 5, 15);
+            const bathroomDiff = Math.abs(subject.bathrooms - comparable.bathrooms);
+            score -= Math.min(bathroomDiff * 5, 10);
+            const sqftDiff = Math.abs(subject.squareFeet - comparable.squareFeet);
+            const sqftPercentDiff = sqftDiff / subject.squareFeet;
+            score -= Math.min(sqftPercentDiff * 100, 15);
+            const ageDiff = Math.abs(subject.yearBuilt - comparable.yearBuilt);
+            score -= Math.min(ageDiff / 2, 10);
+            return Math.max(0, Math.round(score));
+        }
+
+        function findComparables(subject) {
+            return properties
+                .filter(p => p.id !== subject.id && (p.status === 'Sold' || p.status === 'Active'))
+                .map(p => ({
+                    ...p,
+                    similarity: calculateSimilarity(subject, p)
+                }))
+                .sort((a, b) => b.similarity - a.similarity)
+                .slice(0, 5);
+        }
+
+        function performCMA(subject) {
+            const comparables = findComparables(subject);
+            if (comparables.length === 0) {
+                return { estimatedValue: subject.price, confidenceLevel: 'Low', comparables: [] };
+            }
+            const weightedSum = comparables.reduce((sum, comp, index) => {
+                const weight = 1 / (index + 1);
+                return sum + (comp.price * comp.similarity / 100 * weight);
+            }, 0);
+            const totalWeight = comparables.reduce((sum, _, index) => sum + (1 / (index + 1)), 0);
+            const estimatedValue = Math.round(weightedSum / totalWeight);
+            const avgSimilarity = comparables.reduce((sum, c) => sum + c.similarity, 0) / comparables.length;
+            const confidenceLevel = avgSimilarity >= 80 && comparables.length >= 3 ? 'High' :
+                                   avgSimilarity >= 60 && comparables.length >= 2 ? 'Medium' : 'Low';
+            return { estimatedValue, confidenceLevel, comparables };
+        }
+
+        function addProperty(formData) {
+            const newProperty = {
+                id: Date.now().toString(),
+                address: formData.address,
+                city: formData.city,
+                state: formData.state,
+                zipCode: formData.zipCode,
+                price: parseInt(formData.price),
+                bedrooms: parseInt(formData.bedrooms),
+                bathrooms: parseFloat(formData.bathrooms),
+                squareFeet: parseInt(formData.squareFeet),
+                lotSize: parseInt(formData.lotSize) || 0,
+                yearBuilt: parseInt(formData.yearBuilt),
+                propertyType: formData.propertyType,
+                status: formData.status,
+                listDate: formData.listDate || new Date().toISOString().split('T')[0],
+                daysOnMarket: parseInt(formData.daysOnMarket) || 0,
+                description: formData.description || '',
+                features: formData.features ? (Array.isArray(formData.features) ? formData.features : formData.features.split(',').map(f => f.trim())) : [],
+                images: formData.imageUrl ? [formData.imageUrl] : ['https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=800']
+            };
+
+            if (editingProperty && editingProperty.id) {
+                const index = properties.findIndex(p => p.id === editingProperty.id);
+                properties[index] = { ...newProperty, id: editingProperty.id };
+                editingProperty = null;
+            } else {
+                properties.push(newProperty);
+            }
+
+            saveProperties();
+            showAddForm = false;
+            render();
+        }
+
+        function deleteProperty(propertyId) {
+            if (confirm('Are you sure you want to delete this property?')) {
+                properties = properties.filter(p => p.id !== propertyId);
+                saveProperties();
+                render();
+            }
+        }
+
+        function editProperty(propertyId) {
+            editingProperty = properties.find(p => p.id === propertyId);
+            showAddForm = true;
+            showQuickAdd = false;
+            render();
+        }
+
+        function handleQuickAddText(text) {
+            if (!text.trim()) {
+                alert('Please enter some text about the property!');
+                return;
+            }
+
+            const propertyData = parsePropertyFromText(text);
+
+            // Fill in defaults for missing required fields
+            if (!propertyData.propertyType) propertyData.propertyType = 'Single Family';
+            if (!propertyData.status) propertyData.status = 'Active';
+
+            editingProperty = { ...propertyData };
+            showQuickAdd = false;
+            showAddForm = true;
+            render();
+        }
+
+        function renderQuickAdd() {
+            return `
+                <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                    <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto">
+                        <div class="flex justify-between items-center mb-6">
+                            <h2 class="text-2xl font-bold">Quick Add Property</h2>
+                            <button onclick="showQuickAdd = false; render();" class="text-gray-500 hover:text-gray-700">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                </svg>
+                            </button>
+                        </div>
+
+                        <div class="space-y-6">
+                            <!-- Paste Description -->
+                            <div class="border-2 border-blue-300 rounded-lg p-6 bg-blue-50">
+                                <div class="flex items-start gap-4">
+                                    <div class="bg-blue-600 p-3 rounded-lg">
+                                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                                        </svg>
+                                    </div>
+                                    <div class="flex-1">
+                                        <h3 class="font-semibold text-lg mb-2 text-blue-900">Paste Listing Text</h3>
+                                        <p class="text-sm text-blue-800 mb-3">
+                                            Copy & paste from Redfin, Zillow, or describe in your own words!
+                                        </p>
+                                        <div class="bg-white p-3 rounded-lg mb-3 text-xs text-gray-600">
+                                            <p class="font-medium mb-1">Example:</p>
+                                            <p class="italic">"3 bed 2 bath house at 123 Main St, Chicago IL 60601, $350,000, 1800 sqft, built 2015, granite counters, hardwood floors"</p>
+                                        </div>
+                                        <textarea id="textInput" rows="6"
+                                                  placeholder="Paste listing description here..."
+                                                  class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 mb-3"></textarea>
+                                        <button onclick="handleQuickAddText(document.getElementById('textInput').value)"
+                                                class="w-full bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 flex items-center justify-center gap-2">
+                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                                            </svg>
+                                            Auto-Fill Form
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="text-center text-gray-500 font-medium">OR</div>
+
+                            <!-- Manual Entry -->
+                            <div class="border-2 border-gray-300 rounded-lg p-6 hover:border-blue-400 transition-colors">
+                                <div class="flex items-start gap-4">
+                                    <div class="bg-gray-600 p-3 rounded-lg">
+                                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                                        </svg>
+                                    </div>
+                                    <div class="flex-1">
+                                        <h3 class="font-semibold text-lg mb-2">Enter Manually</h3>
+                                        <p class="text-sm text-gray-600 mb-3">
+                                            Fill in all fields yourself
+                                        </p>
+                                        <button onclick="showQuickAdd = false; editingProperty = {}; showAddForm = true; render();"
+                                                class="bg-gray-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-gray-700">
+                                            Open Form
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mt-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+                            <div class="flex gap-2">
+                                <svg class="w-5 h-5 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                </svg>
+                                <p class="text-sm text-green-800">
+                                    <strong>100% Local:</strong> All parsing happens in your browser. No API key needed!
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderAddPropertyForm() {
+            const prop = editingProperty || {};
+            const isAutoFilled = editingProperty && !editingProperty.id;
+
+            return `
+                <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 overflow-y-auto z-40">
+                    <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full my-8">
+                        <div class="p-6">
+                            <div class="flex justify-between items-center mb-6">
+                                <div>
+                                    <h2 class="text-2xl font-bold">${editingProperty?.id ? 'Edit' : isAutoFilled ? 'Review & Add' : 'Add'} Property</h2>
+                                    ${isAutoFilled ? '<p class="text-sm text-green-600 mt-1">✓ Auto-filled from your text - review and adjust as needed</p>' : ''}
+                                </div>
+                                <button onclick="showAddForm = false; editingProperty = null; render();" class="text-gray-500 hover:text-gray-700">
+                                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                    </svg>
+                                </button>
+                            </div>
+
+                            <form onsubmit="event.preventDefault(); addProperty(Object.fromEntries(new FormData(event.target)));" class="space-y-4">
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div class="md:col-span-2">
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Street Address *</label>
+                                        <input type="text" name="address" required value="${prop.address || ''}"
+                                               class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                                               placeholder="123 Main Street">
+                                    </div>
+
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">City *</label>
+                                        <input type="text" name="city" required value="${prop.city || ''}"
+                                               class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                                               placeholder="Chicago">
+                                    </div>
+
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">State *</label>
+                                        <input type="text" name="state" required value="${prop.state || ''}"
+                                               class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                                               placeholder="IL" maxlength="2">
+                                    </div>
+
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">ZIP Code *</label>
+                                        <input type="text" name="zipCode" required value="${prop.zipCode || ''}"
+                                               class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                                               placeholder="60601">
+                                    </div>
+
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Price *</label>
+                                        <input type="number" name="price" required value="${prop.price || ''}"
+                                               class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                                               placeholder="350000">
+                                    </div>
+
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Bedrooms *</label>
+                                        <input type="number" name="bedrooms" required value="${prop.bedrooms || ''}"
+                                               class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                                               placeholder="3">
+                                    </div>
+
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Bathrooms *</label>
+                                        <input type="number" step="0.5" name="bathrooms" required value="${prop.bathrooms || ''}"
+                                               class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                                               placeholder="2">
+                                    </div>
+
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Square Feet *</label>
+                                        <input type="number" name="squareFeet" required value="${prop.squareFeet || ''}"
+                                               class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                                               placeholder="1800">
+                                    </div>
+
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Lot Size (sqft)</label>
+                                        <input type="number" name="lotSize" value="${prop.lotSize || ''}"
+                                               class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                                               placeholder="7200">
+                                    </div>
+
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Year Built *</label>
+                                        <input type="number" name="yearBuilt" required value="${prop.yearBuilt || ''}"
+                                               class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                                               placeholder="2015">
+                                    </div>
+
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Property Type *</label>
+                                        <select name="propertyType" required
+                                                class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
+                                            <option value="">Select...</option>
+                                            <option value="Single Family" ${prop.propertyType === 'Single Family' ? 'selected' : ''}>Single Family</option>
+                                            <option value="Condo" ${prop.propertyType === 'Condo' ? 'selected' : ''}>Condo</option>
+                                            <option value="Townhouse" ${prop.propertyType === 'Townhouse' ? 'selected' : ''}>Townhouse</option>
+                                            <option value="Multi-Family" ${prop.propertyType === 'Multi-Family' ? 'selected' : ''}>Multi-Family</option>
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Status *</label>
+                                        <select name="status" required
+                                                class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
+                                            <option value="">Select...</option>
+                                            <option value="Active" ${prop.status === 'Active' ? 'selected' : ''}>Active</option>
+                                            <option value="Pending" ${prop.status === 'Pending' ? 'selected' : ''}>Pending</option>
+                                            <option value="Sold" ${prop.status === 'Sold' ? 'selected' : ''}>Sold</option>
+                                            <option value="Off Market" ${prop.status === 'Off Market' ? 'selected' : ''}>Off Market</option>
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Days on Market</label>
+                                        <input type="number" name="daysOnMarket" value="${prop.daysOnMarket || ''}"
+                                               class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                                               placeholder="30">
+                                    </div>
+
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">List Date</label>
+                                        <input type="date" name="listDate" value="${prop.listDate || ''}"
+                                               class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
+                                    </div>
+
+                                    <div class="md:col-span-2">
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Features (comma separated)</label>
+                                        <input type="text" name="features" value="${prop.features ? (Array.isArray(prop.features) ? prop.features.join(', ') : prop.features) : ''}"
+                                               class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                                               placeholder="Granite Counters, Hardwood Floors, Central AC">
+                                    </div>
+
+                                    <div class="md:col-span-2">
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                                        <textarea name="description" rows="3"
+                                                  class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                                                  placeholder="Beautiful home with modern updates...">${prop.description || ''}</textarea>
+                                    </div>
+
+                                    <div class="md:col-span-2">
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Image URL (optional)</label>
+                                        <input type="url" name="imageUrl" value="${prop.images ? (Array.isArray(prop.images) ? prop.images[0] : prop.images) : ''}"
+                                               class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                                               placeholder="https://example.com/image.jpg">
+                                    </div>
+                                </div>
+
+                                <div class="flex gap-3 pt-4">
+                                    <button type="submit"
+                                            class="flex-1 bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700">
+                                        ${editingProperty?.id ? 'Update' : 'Add'} Property
+                                    </button>
+                                    <button type="button" onclick="showAddForm = false; editingProperty = null; render();"
+                                            class="px-6 py-3 border border-gray-300 rounded-lg font-medium hover:bg-gray-50">
+                                        Cancel
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderPropertyCard(property) {
+            const pricePerSqft = getPricePerSquareFoot(property);
+            const statusColors = {
+                'Active': 'bg-green-500',
+                'Pending': 'bg-yellow-500',
+                'Sold': 'bg-blue-500',
+                'Off Market': 'bg-gray-500'
+            };
+
+            return `
+                <div class="border rounded-lg overflow-hidden shadow-lg hover:shadow-xl transition-shadow">
+                    <div class="relative">
+                        <img src="${property.images[0]}" alt="${property.address}" class="w-full h-48 object-cover" onerror="this.src='https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=800'">
+                        <div class="absolute top-2 right-2 px-3 py-1 rounded-full text-white text-sm font-semibold ${statusColors[property.status]}">
+                            ${property.status}
+                        </div>
+                    </div>
+                    <div class="p-4">
+                        <div class="mb-2">
+                            <h3 class="font-bold text-xl text-gray-900">$${property.price.toLocaleString()}</h3>
+                            <p class="text-sm text-gray-600">$${pricePerSqft}/sqft</p>
+                        </div>
+                        <p class="text-gray-700 font-medium mb-2">${property.address}</p>
+                        <p class="text-gray-600 text-sm mb-3">${property.city}, ${property.state} ${property.zipCode}</p>
+                        <div class="flex gap-4 mb-3 text-sm text-gray-700">
+                            <div><span class="font-semibold">${property.bedrooms}</span> bed</div>
+                            <div><span class="font-semibold">${property.bathrooms}</span> bath</div>
+                            <div><span class="font-semibold">${property.squareFeet.toLocaleString()}</span> sqft</div>
+                        </div>
+                        <div class="flex gap-2 mb-3 text-xs text-gray-600">
+                            <span class="bg-gray-100 px-2 py-1 rounded">${property.propertyType}</span>
+                            <span class="bg-gray-100 px-2 py-1 rounded">Built ${property.yearBuilt}</span>
+                            ${property.daysOnMarket ? `<span class="bg-gray-100 px-2 py-1 rounded">${property.daysOnMarket} DOM</span>` : ''}
+                        </div>
+                        <div class="grid grid-cols-2 gap-2 mb-2">
+                            <button onclick="viewComps('${property.id}')" class="px-3 py-2 bg-blue-600 text-white rounded text-sm font-medium hover:bg-blue-700">
+                                View Comps
+                            </button>
+                            <button onclick="getValuation('${property.id}')" class="px-3 py-2 bg-green-600 text-white rounded text-sm font-medium hover:bg-green-700">
+                                Valuation
+                            </button>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <button onclick="editProperty('${property.id}')" class="px-3 py-2 bg-gray-600 text-white rounded text-sm font-medium hover:bg-gray-700">
+                                Edit
+                            </button>
+                            <button onclick="deleteProperty('${property.id}')" class="px-3 py-2 bg-red-600 text-white rounded text-sm font-medium hover:bg-red-700">
+                                Delete
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function viewComps(propertyId) {
+            selectedProperty = properties.find(p => p.id === propertyId);
+            currentTab = 'compare';
+            render();
+        }
+
+        function getValuation(propertyId) {
+            selectedProperty = properties.find(p => p.id === propertyId);
+            currentTab = 'valuation';
+            render();
+        }
+
+        function renderComparisonView() {
+            const comparables = findComparables(selectedProperty);
+
+            return `
+                <div class="bg-white rounded-lg shadow-lg p-6">
+                    <button onclick="currentTab='listings'; render();" class="mb-4 text-blue-600 hover:text-blue-700 font-medium">
+                        ← Back to Listings
+                    </button>
+                    <h2 class="text-2xl font-bold mb-6">Comparable Properties Analysis</h2>
+
+                    <div class="mb-6 bg-blue-50 p-4 rounded-lg">
+                        <h3 class="font-semibold text-lg mb-2">Subject Property</h3>
+                        <p class="font-medium">${selectedProperty.address}</p>
+                        <p class="text-sm text-gray-600">${selectedProperty.city}, ${selectedProperty.state} ${selectedProperty.zipCode}</p>
+                        <div class="mt-2 flex gap-4 text-sm">
+                            <span>${selectedProperty.bedrooms} bed</span>
+                            <span>${selectedProperty.bathrooms} bath</span>
+                            <span>${selectedProperty.squareFeet.toLocaleString()} sqft</span>
+                            <span>Built ${selectedProperty.yearBuilt}</span>
+                        </div>
+                        <p class="mt-2 text-xl font-bold">$${selectedProperty.price.toLocaleString()}</p>
+                    </div>
+
+                    ${comparables.length === 0 ? `
+                        <div class="text-center py-8 text-gray-600">
+                            <p class="mb-4">No comparable properties found.</p>
+                            <p>Add more properties with similar characteristics to see comparisons!</p>
+                        </div>
+                    ` : `
+                        <div class="space-y-4">
+                            ${comparables.map((comp, index) => {
+                                const similarityColor = comp.similarity >= 80 ? 'bg-green-100 text-green-800' :
+                                                       comp.similarity >= 60 ? 'bg-yellow-100 text-yellow-800' :
+                                                       'bg-red-100 text-red-800';
+                                return `
+                                    <div class="border rounded-lg p-4">
+                                        <div class="flex justify-between items-start mb-3">
+                                            <div class="flex-1">
+                                                <div class="flex items-center gap-3 mb-2">
+                                                    <span class="bg-blue-600 text-white px-2 py-1 rounded text-sm font-semibold">
+                                                        Comp #${index + 1}
+                                                    </span>
+                                                    <span class="px-2 py-1 rounded text-sm font-semibold ${similarityColor}">
+                                                        ${comp.similarity}% Match
+                                                    </span>
+                                                </div>
+                                                <p class="font-medium">${comp.address}</p>
+                                                <p class="text-sm text-gray-600">${comp.city}, ${comp.state} ${comp.zipCode}</p>
+                                            </div>
+                                            <div class="text-right">
+                                                <p class="text-lg font-bold">$${comp.price.toLocaleString()}</p>
+                                                <p class="text-sm text-gray-600">$${getPricePerSquareFoot(comp)}/sqft</p>
+                                            </div>
+                                        </div>
+                                        <div class="grid grid-cols-4 gap-3 text-sm">
+                                            <div class="bg-gray-50 p-2 rounded">
+                                                <span class="text-gray-600">Beds:</span>
+                                                <span class="ml-1 font-semibold">${comp.bedrooms}</span>
+                                            </div>
+                                            <div class="bg-gray-50 p-2 rounded">
+                                                <span class="text-gray-600">Baths:</span>
+                                                <span class="ml-1 font-semibold">${comp.bathrooms}</span>
+                                            </div>
+                                            <div class="bg-gray-50 p-2 rounded">
+                                                <span class="text-gray-600">Sqft:</span>
+                                                <span class="ml-1 font-semibold">${comp.squareFeet.toLocaleString()}</span>
+                                            </div>
+                                            <div class="bg-gray-50 p-2 rounded">
+                                                <span class="text-gray-600">Built:</span>
+                                                <span class="ml-1 font-semibold">${comp.yearBuilt}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    `}
+                </div>
+            `;
+        }
+
+        function renderValuationView() {
+            const result = performCMA(selectedProperty);
+            const confidenceColors = {
+                'High': 'bg-green-100 text-green-800',
+                'Medium': 'bg-yellow-100 text-yellow-800',
+                'Low': 'bg-red-100 text-red-800'
+            };
+
+            return `
+                <div class="bg-white rounded-lg shadow-lg p-6">
+                    <button onclick="currentTab='listings'; render();" class="mb-4 text-blue-600 hover:text-blue-700 font-medium">
+                        ← Back to Listings
+                    </button>
+                    <h2 class="text-2xl font-bold mb-6">Property Valuation</h2>
+
+                    <div class="mb-6 bg-gray-50 p-4 rounded-lg">
+                        <h3 class="font-semibold text-lg mb-2">Property Details</h3>
+                        <p class="font-medium">${selectedProperty.address}</p>
+                        <p class="text-sm text-gray-600">${selectedProperty.city}, ${selectedProperty.state} ${selectedProperty.zipCode}</p>
+                        <div class="mt-2 flex flex-wrap gap-3 text-sm">
+                            <span class="bg-white px-3 py-1 rounded">${selectedProperty.bedrooms} bed</span>
+                            <span class="bg-white px-3 py-1 rounded">${selectedProperty.bathrooms} bath</span>
+                            <span class="bg-white px-3 py-1 rounded">${selectedProperty.squareFeet.toLocaleString()} sqft</span>
+                            <span class="bg-white px-3 py-1 rounded">${selectedProperty.propertyType}</span>
+                            <span class="bg-white px-3 py-1 rounded">Built ${selectedProperty.yearBuilt}</span>
+                        </div>
+                        <p class="mt-3 text-sm text-gray-600">
+                            List Price: <span class="font-bold text-gray-900 text-lg">$${selectedProperty.price.toLocaleString()}</span>
+                        </p>
+                    </div>
+
+                    ${result.comparables.length === 0 ? `
+                        <div class="bg-yellow-50 p-6 rounded-lg text-center">
+                            <p class="text-yellow-800 font-medium mb-2">Unable to calculate valuation</p>
+                            <p class="text-sm text-yellow-700">Add more comparable properties to get an accurate valuation estimate.</p>
+                        </div>
+                    ` : `
+                        <div class="bg-blue-50 p-6 rounded-lg mb-6">
+                            <div class="flex items-center justify-between mb-3">
+                                <h3 class="text-lg font-semibold text-gray-700">Estimated Value (CMA)</h3>
+                                <span class="px-3 py-1 rounded-full text-sm font-semibold ${confidenceColors[result.confidenceLevel]}">
+                                    ${result.confidenceLevel} Confidence
+                                </span>
+                            </div>
+                            <p class="text-4xl font-bold text-blue-900 mb-2">$${result.estimatedValue.toLocaleString()}</p>
+                            <p class="text-sm text-gray-600">Method: Comparative Market Analysis</p>
+
+                            ${result.estimatedValue !== selectedProperty.price ? `
+                                <div class="mt-4 pt-4 border-t border-blue-200">
+                                    <div class="flex justify-between items-center">
+                                        <span class="text-sm text-gray-700">Compared to List Price:</span>
+                                        <span class="text-lg font-bold ${result.estimatedValue > selectedProperty.price ? 'text-green-600' : 'text-red-600'}">
+                                            ${result.estimatedValue > selectedProperty.price ? '+' : ''}$${(result.estimatedValue - selectedProperty.price).toLocaleString()}
+                                            (${(((result.estimatedValue - selectedProperty.price) / selectedProperty.price) * 100).toFixed(1)}%)
+                                        </span>
+                                    </div>
+                                </div>
+                            ` : ''}
+                        </div>
+
+                        <div>
+                            <h3 class="font-semibold mb-3">Comparables Used (${result.comparables.length})</h3>
+                            <div class="space-y-2">
+                                ${result.comparables.map(comp => `
+                                    <div class="bg-gray-50 p-3 rounded flex justify-between items-center">
+                                        <div>
+                                            <p class="font-medium text-sm">${comp.address}</p>
+                                            <p class="text-xs text-gray-600">
+                                                ${comp.bedrooms} bed, ${comp.bathrooms} bath, ${comp.squareFeet.toLocaleString()} sqft
+                                            </p>
+                                        </div>
+                                        <div class="text-right">
+                                            <p class="font-semibold">$${comp.price.toLocaleString()}</p>
+                                            <p class="text-xs text-gray-600">${comp.similarity}% match</p>
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `}
+                </div>
+            `;
+        }
+
+        function render() {
+            const html = `
+                <div class="min-h-screen bg-gray-50">
+                    <header class="bg-white shadow-sm border-b">
+                        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+                            <div class="flex justify-between items-center">
+                                <div>
+                                    <h1 class="text-3xl font-bold text-gray-900">Real Estate Comps & Valuation</h1>
+                                    <p class="mt-1 text-sm text-gray-600">Smart property analysis - works 100% offline</p>
+                                </div>
+                                <button onclick="showQuickAdd = true; render();"
+                                        class="bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 flex items-center gap-2">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                                    </svg>
+                                    Quick Add
+                                </button>
+                            </div>
+                        </div>
+                    </header>
+
+                    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                        ${currentTab === 'listings' ? `
+                            ${properties.length === 0 ? `
+                                <div class="bg-white rounded-lg shadow-sm p-12 text-center">
+                                    <svg class="w-16 h-16 mx-auto text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+                                    </svg>
+                                    <h2 class="text-2xl font-bold text-gray-900 mb-2">No Properties Yet</h2>
+                                    <p class="text-gray-600 mb-6">Get started by adding your first property!</p>
+                                    <button onclick="showQuickAdd = true; render();"
+                                            class="bg-blue-600 text-white px-8 py-3 rounded-lg font-medium hover:bg-blue-700">
+                                        Add Your First Property
+                                    </button>
+                                </div>
+                            ` : `
+                                <div class="bg-white rounded-lg shadow-sm p-6 mb-6">
+                                    <h2 class="text-lg font-semibold mb-4">Your Properties</h2>
+                                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                        <div class="text-center">
+                                            <p class="text-sm text-gray-600">Total Properties</p>
+                                            <p class="text-2xl font-bold text-gray-900">${properties.length}</p>
+                                        </div>
+                                        <div class="text-center">
+                                            <p class="text-sm text-gray-600">Active</p>
+                                            <p class="text-2xl font-bold text-gray-900">${properties.filter(p => p.status === 'Active').length}</p>
+                                        </div>
+                                        <div class="text-center">
+                                            <p class="text-sm text-gray-600">Sold</p>
+                                            <p class="text-2xl font-bold text-gray-900">${properties.filter(p => p.status === 'Sold').length}</p>
+                                        </div>
+                                        <div class="text-center">
+                                            <p class="text-sm text-gray-600">Avg Price</p>
+                                            <p class="text-2xl font-bold text-gray-900">$${properties.length > 0 ? Math.round(properties.reduce((sum, p) => sum + p.price, 0) / properties.length / 1000) : 0}K</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                    ${properties.map(renderPropertyCard).join('')}
+                                </div>
+                            `}
+                        ` : currentTab === 'compare' ? renderComparisonView() : renderValuationView()}
+                    </main>
+
+                    ${showQuickAdd ? renderQuickAdd() : ''}
+                    ${showAddForm ? renderAddPropertyForm() : ''}
+
+                    <footer class="bg-white border-t mt-12">
+                        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+                            <p class="text-center text-sm text-gray-600">
+                                Real Estate Comps & Valuation App - Works 100% offline in your browser
+                            </p>
+                        </div>
+                    </footer>
+                </div>
+            `;
+
+            document.getElementById('app').innerHTML = html;
+        }
+
+        // Initial render
+        render();
+    </script>
+</body>
+</html>
