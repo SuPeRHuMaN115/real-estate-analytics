@@ -1,20 +1,68 @@
 [
   {
     "id": 1,
-    "address": "123 Maple Street, Springfield",
-    "price": 350000,
-    "image": "https://via.placeholder.com/400x300?text=House+1"
+    "address": "2156 Sunset Boulevard",
+    "city": "Los Angeles, CA",
+    "price": 1250000,
+    "bedrooms": 4,
+    "bathrooms": 3,
+    "sqft": 2800,
+    "image": "https://images.unsplash.com/photo-1613490493576-7fde63acd811?w=800&h=600&fit=crop",
+    "type": "Single Family Home"
   },
   {
     "id": 2,
-    "address": "456 Oak Avenue, Shelbyville",
-    "price": 450000,
-    "image": "https://via.placeholder.com/400x300?text=House+2"
+    "address": "847 Park Avenue",
+    "city": "New York, NY",
+    "price": 2850000,
+    "bedrooms": 3,
+    "bathrooms": 2.5,
+    "sqft": 2200,
+    "image": "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=800&h=600&fit=crop",
+    "type": "Luxury Condo"
   },
   {
     "id": 3,
-    "address": "789 Pine Road, Capital City",
-    "price": 550000,
-    "image": "https://via.placeholder.com/400x300?text=House+3"
+    "address": "1423 Ocean Drive",
+    "city": "Miami Beach, FL",
+    "price": 3200000,
+    "bedrooms": 5,
+    "bathrooms": 4,
+    "sqft": 3500,
+    "image": "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=800&h=600&fit=crop",
+    "type": "Beachfront Villa"
+  },
+  {
+    "id": 4,
+    "address": "932 Maple Grove Lane",
+    "city": "Austin, TX",
+    "price": 875000,
+    "bedrooms": 4,
+    "bathrooms": 3.5,
+    "sqft": 3100,
+    "image": "https://images.unsplash.com/photo-1605276374104-dee2a0ed3cd6?w=800&h=600&fit=crop",
+    "type": "Modern Home"
+  },
+  {
+    "id": 5,
+    "address": "567 Pine Hills Court",
+    "city": "Seattle, WA",
+    "price": 1450000,
+    "bedrooms": 3,
+    "bathrooms": 2.5,
+    "sqft": 2400,
+    "image": "https://images.unsplash.com/photo-1572120360610-d971b9d7767c?w=800&h=600&fit=crop",
+    "type": "Contemporary"
+  },
+  {
+    "id": 6,
+    "address": "221 Historic District",
+    "city": "Charleston, SC",
+    "price": 950000,
+    "bedrooms": 4,
+    "bathrooms": 3,
+    "sqft": 2900,
+    "image": "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=800&h=600&fit=crop",
+    "type": "Historic Home"
   }
 ]
