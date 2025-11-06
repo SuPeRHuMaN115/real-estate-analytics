@@ -1,4 +1,5 @@
 import Head from 'next/head';
+import Link from 'next/link';
 import properties from '@/data/sample-properties.json';
 import PropertyCard from '@/components/PropertyCard';
 import { getAveragePrice } from '@/utils/analysis';
@@ -31,9 +32,11 @@ export default function Home() {
                 <button className="bg-white text-blue-600 px-8 py-3 rounded-lg font-semibold hover:bg-blue-50 transition-colors shadow-lg">
                   Browse Properties
                 </button>
-                <button className="border-2 border-white text-white px-8 py-3 rounded-lg font-semibold hover:bg-white hover:text-blue-600 transition-colors">
-                  Contact Agent
-                </button>
+                <Link href="/admin/upload">
+                  <button className="border-2 border-white text-white px-8 py-3 rounded-lg font-semibold hover:bg-white hover:text-blue-600 transition-colors">
+                    Add Property
+                  </button>
+                </Link>
               </div>
             </div>
           </div>
