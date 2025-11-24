@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Real Estate Tycoon - Property Investment Game</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .animate-bounce-once { animation: bounce 0.5s ease-in-out; }
+    @keyframes bounce {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-10px); }
+    }
+    .line-clamp-2 {
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+  </style>
+</head>
+<body class="bg-gradient-to-br from-gray-100 to-gray-200 min-h-screen">
+  <div id="app"></div>
+
+  <script>
+    // Game Data
+    const propertyTemplates = [
+      { id: 'starter-home', name: 'Cozy Starter Home', address: '123 Maple Street', type: 'house', basePrice: 85000, rentIncome: 800, condition: 85, image: '🏠', description: 'Perfect first investment. Solid neighborhood.' },
+      { id: 'downtown-apt', name: 'Downtown Studio', address: '456 Main Ave, Unit 12', type: 'apartment', basePrice: 120000, rentIncome: 1100, condition: 90, image: '🏢', description: 'Prime location near restaurants and nightlife.' },
+      { id: 'suburban-ranch', name: 'Suburban Ranch', address: '789 Oak Lane', type: 'house', basePrice: 175000, rentIncome: 1400, condition: 75, image: '🏡', description: 'Spacious family home with a big backyard.' },
+      { id: 'retail-strip', name: 'Strip Mall Unit', address: '321 Commerce Blvd', type: 'commercial', basePrice: 250000, rentIncome: 2200, condition: 80, image: '🏪', description: 'Commercial space with steady tenants.' },
+      { id: 'beachfront-condo', name: 'Beachfront Condo', address: '555 Ocean Drive', type: 'luxury', basePrice: 450000, rentIncome: 3500, condition: 95, image: '🏖️', description: 'Stunning ocean views. Premium rental.' },
+      { id: 'fixer-upper', name: 'The Fixer-Upper', address: '999 Broken Dreams Rd', type: 'house', basePrice: 45000, rentIncome: 600, condition: 35, image: '🏚️', description: 'Massive potential... if you handle repairs.' },
+      { id: 'office-building', name: 'Downtown Office', address: '100 Business Park Way', type: 'commercial', basePrice: 380000, rentIncome: 3200, condition: 88, image: '🏛️', description: 'Class A office with corporate tenants.' },
+      { id: 'luxury-penthouse', name: 'Skyline Penthouse', address: '1 Tower Plaza, PH1', type: 'luxury', basePrice: 750000, rentIncome: 5500, condition: 98, image: '✨', description: 'The crown jewel. Panoramic city views.' },
+      { id: 'student-housing', name: 'Student Housing', address: '420 University Ave', type: 'apartment', basePrice: 200000, rentIncome: 2000, condition: 65, image: '🎓', description: 'Near campus. High turnover but always full.' },
+      { id: 'warehouse', name: 'Industrial Warehouse', address: '800 Factory Lane', type: 'commercial', basePrice: 300000, rentIncome: 2800, condition: 70, image: '🏭', description: 'E-commerce boom = high storage demand.' },
+      { id: 'historic-brownstone', name: 'Historic Brownstone', address: '42 Heritage Row', type: 'luxury', basePrice: 550000, rentIncome: 4200, condition: 82, image: '🏰', description: 'Charming historic property.' },
+      { id: 'duplex', name: 'Income Duplex', address: '234 Double Street', type: 'house', basePrice: 165000, rentIncome: 1600, condition: 78, image: '🏘️', description: 'Two units = double the income.' },
+    ];
+
+    const gameEvents = [
+      { id: 'market-boom', title: '📈 Market Boom!', description: 'The real estate market is on fire! All property values increase by 15%.', type: 'positive',
+        effect: (state) => {
+          state.ownedProperties.forEach(p => p.currentPrice = Math.round(p.currentPrice * 1.15));
+          state.availableProperties.forEach(p => p.currentPrice = Math.round(p.currentPrice * 1.15));
+          state.marketTrend = 'bull';
+          return 'Property values jumped 15%!';
+        }
+      },
+      { id: 'market-crash', title: '📉 Market Correction!', description: 'Economic uncertainty causes property values to drop 12%.', type: 'negative',
+        effect: (state) => {
+          state.ownedProperties.forEach(p => p.currentPrice = Math.round(p.currentPrice * 0.88));
+          state.availableProperties.forEach(p => p.currentPrice = Math.round(p.currentPrice * 0.88));
+          state.marketTrend = 'bear';
+          return 'Property values dropped 12%!';
+        }
+      },
+      { id: 'rent-surge', title: '💰 Rent Surge!', description: 'Housing demand is up! Bonus 20% rental income this turn.', type: 'positive',
+        effect: (state) => {
+          const bonus = state.ownedProperties.reduce((sum, p) => sum + p.rentIncome * 0.2, 0);
+          state.cash += Math.round(bonus);
+          return `Bonus rent: $${Math.round(bonus).toLocaleString()}!`;
+        }
+      },
+      { id: 'emergency-repair', title: '🔧 Emergency Repairs!', description: 'One of your properties needs urgent repairs. Pay $5,000.', type: 'negative',
+        effect: (state) => {
+          if (state.ownedProperties.length === 0) return 'No properties to repair!';
+          if (state.cash >= 5000) { state.cash -= 5000; return 'Paid $5,000 for emergency repairs.'; }
+          const worst = state.ownedProperties.reduce((a, b) => a.condition < b.condition ? a : b);
+          worst.condition = Math.max(0, worst.condition - 20);
+          return `Couldn't afford repairs. ${worst.name} condition dropped!`;
+        }
+      },
+      { id: 'property-tax', title: '📋 Property Tax Due!', description: 'Annual taxes are due. Pay 2% of portfolio value.', type: 'negative',
+        effect: (state) => {
+          const totalValue = state.ownedProperties.reduce((sum, p) => sum + p.currentPrice, 0);
+          const tax = Math.round(totalValue * 0.02);
+          state.cash = Math.max(0, state.cash - tax);
+          return `Paid $${tax.toLocaleString()} in property taxes.`;
+        }
+      },
+      { id: 'inheritance', title: '🎁 Unexpected Inheritance!', description: 'A distant relative left you some money!', type: 'positive',
+        effect: (state) => {
+          const amount = 10000 + Math.floor(Math.random() * 20000);
+          state.cash += amount;
+          return `Received $${amount.toLocaleString()} inheritance!`;
+        }
+      },
+      { id: 'tenant-trouble', title: '😠 Problem Tenant!', description: 'A tenant caused damage and skipped town.', type: 'negative',
+        effect: (state) => {
+          if (state.ownedProperties.length === 0) return 'No tenants, no problems!';
+          const prop = state.ownedProperties[Math.floor(Math.random() * state.ownedProperties.length)];
+          state.cash = Math.max(0, state.cash - prop.rentIncome);
+          return `Lost $${prop.rentIncome.toLocaleString()} from ${prop.name}`;
+        }
+      },
+      { id: 'tv-show', title: '📺 Featured on TV!', description: 'Your property was on a popular show! Value +25%.', type: 'positive',
+        effect: (state) => {
+          if (state.ownedProperties.length === 0) return 'No properties to feature!';
+          const prop = state.ownedProperties[Math.floor(Math.random() * state.ownedProperties.length)];
+          prop.currentPrice = Math.round(prop.currentPrice * 1.25);
+          state.reputation = Math.min(100, state.reputation + 10);
+          return `${prop.name} is now worth 25% more!`;
+        }
+      },
+      { id: 'new-development', title: '🏗️ New Development!', description: 'A major development nearby boosts your values 10%!', type: 'positive',
+        effect: (state) => {
+          state.ownedProperties.forEach(p => p.currentPrice = Math.round(p.currentPrice * 1.1));
+          return 'Your properties increased 10% in value!';
+        }
+      },
+      { id: 'five-star-tenant', title: '⭐ Five-Star Tenant!', description: 'An excellent tenant signed a long lease! Double rent this turn.', type: 'positive',
+        effect: (state) => {
+          const bonus = state.ownedProperties.reduce((sum, p) => sum + p.rentIncome, 0);
+          state.cash += bonus;
+          state.reputation = Math.min(100, state.reputation + 5);
+          return `Bonus rent: $${bonus.toLocaleString()}!`;
+        }
+      },
+      { id: 'free-renovation', title: '🔨 Free Renovation!', description: 'A TV show wants to fix your worst property for free!', type: 'positive',
+        effect: (state) => {
+          if (state.ownedProperties.length === 0) return 'No properties to renovate!';
+          const worst = state.ownedProperties.reduce((a, b) => a.condition < b.condition ? a : b);
+          worst.condition = 100;
+          worst.currentPrice = Math.round(worst.currentPrice * 1.2);
+          return `${worst.name} is now in perfect condition!`;
+        }
+      },
+    ];
+
+    // Game State
+    let gameState = {
+      cash: 100000,
+      ownedProperties: [],
+      availableProperties: [],
+      turn: 1,
+      netWorth: 100000,
+      currentEvent: null,
+      gameStatus: 'playing',
+      message: 'Welcome to Real Estate Tycoon! Build your empire!',
+      marketTrend: 'stable',
+      reputation: 50,
+    };
+
+    // Helper Functions
+    function generateId() {
+      return Math.random().toString(36).substr(2, 9);
+    }
+
+    function generateMarketProperties(count = 4) {
+      const shuffled = [...propertyTemplates].sort(() => Math.random() - 0.5);
+      return shuffled.slice(0, count).map(template => ({
+        ...template,
+        id: `${template.id}-${generateId()}`,
+        currentPrice: Math.round(template.basePrice * (0.9 + Math.random() * 0.2)),
+      }));
+    }
+
+    function calculateNetWorth() {
+      const propertyValue = gameState.ownedProperties.reduce((sum, p) => sum + p.currentPrice, 0);
+      return gameState.cash + propertyValue;
+    }
+
+    function getRandomEvent() {
+      if (Math.random() > 0.35) return null;
+      return gameEvents[Math.floor(Math.random() * gameEvents.length)];
+    }
+
+    // Game Actions
+    function buyProperty(propertyId) {
+      const property = gameState.availableProperties.find(p => p.id === propertyId);
+      if (!property || gameState.cash < property.currentPrice) {
+        gameState.message = "Can't afford this property!";
+        render();
+        return;
+      }
+
+      gameState.cash -= property.currentPrice;
+      gameState.ownedProperties.push({
+        ...property,
+        purchasePrice: property.currentPrice,
+        turnsOwned: 0,
+      });
+      gameState.availableProperties = gameState.availableProperties.filter(p => p.id !== propertyId);
+      gameState.message = `Purchased ${property.name} for $${property.currentPrice.toLocaleString()}!`;
+      gameState.reputation = Math.min(100, gameState.reputation + 2);
+      gameState.netWorth = calculateNetWorth();
+      render();
+    }
+
+    function sellProperty(propertyId) {
+      const property = gameState.ownedProperties.find(p => p.id === propertyId);
+      if (!property) return;
+
+      const profit = property.currentPrice - property.purchasePrice;
+      const profitPercent = Math.round((profit / property.purchasePrice) * 100);
+
+      gameState.cash += property.currentPrice;
+      gameState.ownedProperties = gameState.ownedProperties.filter(p => p.id !== propertyId);
+      gameState.message = `Sold ${property.name} for $${property.currentPrice.toLocaleString()}! ${
+        profit >= 0 ? `Profit: $${profit.toLocaleString()} (+${profitPercent}%)` : `Loss: $${Math.abs(profit).toLocaleString()} (${profitPercent}%)`
+      }`;
+      gameState.netWorth = calculateNetWorth();
+      render();
+    }
+
+    function repairProperty(propertyId) {
+      const property = gameState.ownedProperties.find(p => p.id === propertyId);
+      if (!property) return;
+
+      const repairCost = Math.round((100 - property.condition) * property.basePrice * 0.002);
+      if (gameState.cash < repairCost) {
+        gameState.message = `Can't afford repairs ($${repairCost.toLocaleString()})!`;
+        render();
+        return;
+      }
+
+      gameState.cash -= repairCost;
+      property.condition = 100;
+      property.currentPrice = Math.round(property.currentPrice * (property.condition < 50 ? 1.15 : 1.05));
+      gameState.message = `Repaired ${property.name} for $${repairCost.toLocaleString()}!`;
+      gameState.netWorth = calculateNetWorth();
+      render();
+    }
+
+    function nextTurn() {
+      // Collect rent
+      let rentCollected = 0;
+      gameState.ownedProperties.forEach(p => {
+        const conditionMultiplier = p.condition / 100;
+        rentCollected += Math.round(p.rentIncome * conditionMultiplier);
+        p.condition = Math.max(0, p.condition - 2);
+        p.turnsOwned++;
+        if (p.condition < 50) p.rentIncome = Math.round(p.rentIncome * 0.95);
+      });
+      gameState.cash += rentCollected;
+
+      // Refresh market
+      const keepCount = Math.floor(Math.random() * 2) + 1;
+      const kept = gameState.availableProperties.sort(() => Math.random() - 0.5).slice(0, keepCount);
+      gameState.availableProperties = [...kept, ...generateMarketProperties(4 - kept.length)];
+
+      gameState.turn++;
+      gameState.message = rentCollected > 0
+        ? `Turn ${gameState.turn}: Collected $${rentCollected.toLocaleString()} in rent.`
+        : `Turn ${gameState.turn}: No rental income yet. Buy properties!`;
+
+      // Random event
+      const event = getRandomEvent();
+      if (event) {
+        gameState.currentEvent = event;
+        const effectMsg = event.effect(gameState);
+        gameState.message = effectMsg;
+      }
+
+      gameState.netWorth = calculateNetWorth();
+
+      // Check win/lose
+      if (gameState.netWorth >= 1000000) {
+        gameState.gameStatus = 'won';
+        gameState.message = `🎉 You're a Real Estate Mogul with $${gameState.netWorth.toLocaleString()}!`;
+      } else if (gameState.netWorth <= 0 && gameState.ownedProperties.length === 0) {
+        gameState.gameStatus = 'lost';
+        gameState.message = '💸 GAME OVER: You went bankrupt!';
+      } else if (gameState.turn > 50) {
+        if (gameState.netWorth >= 500000) {
+          gameState.gameStatus = 'won';
+          gameState.message = `🏆 Time's up! You finished with $${gameState.netWorth.toLocaleString()}!`;
+        } else {
+          gameState.gameStatus = 'lost';
+          gameState.message = `⏰ Time's up! Only $${gameState.netWorth.toLocaleString()}. Try again!`;
+        }
+      }
+
+      render();
+    }
+
+    function dismissEvent() {
+      gameState.currentEvent = null;
+      render();
+    }
+
+    function restartGame() {
+      gameState = {
+        cash: 100000,
+        ownedProperties: [],
+        availableProperties: generateMarketProperties(4),
+        turn: 1,
+        netWorth: 100000,
+        currentEvent: null,
+        gameStatus: 'playing',
+        message: 'New game started! Build your empire!',
+        marketTrend: 'stable',
+        reputation: 50,
+      };
+      render();
+    }
+
+    // Render Function
+    function render() {
+      const typeColors = {
+        house: 'border-green-500 bg-green-50',
+        apartment: 'border-blue-500 bg-blue-50',
+        commercial: 'border-orange-500 bg-orange-50',
+        luxury: 'border-purple-500 bg-purple-50',
+      };
+
+      const trendIcon = gameState.marketTrend === 'bull' ? '📈' : gameState.marketTrend === 'bear' ? '📉' : '➡️';
+      const trendColor = gameState.marketTrend === 'bull' ? 'text-green-400' : gameState.marketTrend === 'bear' ? 'text-red-400' : 'text-gray-300';
+
+      document.getElementById('app').innerHTML = `
+        <div class="p-4 md:p-6 max-w-7xl mx-auto">
+          <!-- Header -->
+          <div class="text-center mb-6">
+            <h1 class="text-4xl md:text-5xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+              🏠 Real Estate Tycoon
+            </h1>
+            <p class="text-gray-600 mt-2">Build your property empire and reach $1,000,000!</p>
+          </div>
+
+          <!-- Stats Bar -->
+          <div class="bg-gradient-to-r from-blue-900 to-purple-900 text-white p-4 rounded-xl shadow-lg mb-6">
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+              <div class="text-center">
+                <div class="text-sm opacity-75">💵 Cash</div>
+                <div class="text-xl font-bold text-green-400">$${gameState.cash.toLocaleString()}</div>
+              </div>
+              <div class="text-center">
+                <div class="text-sm opacity-75">💎 Net Worth</div>
+                <div class="text-xl font-bold text-yellow-400">$${gameState.netWorth.toLocaleString()}</div>
+              </div>
+              <div class="text-center">
+                <div class="text-sm opacity-75">📅 Turn</div>
+                <div class="text-xl font-bold">${gameState.turn} / 50</div>
+              </div>
+              <div class="text-center">
+                <div class="text-sm opacity-75">Market</div>
+                <div class="text-xl font-bold ${trendColor}">${trendIcon} ${gameState.marketTrend.charAt(0).toUpperCase() + gameState.marketTrend.slice(1)}</div>
+              </div>
+              <div class="text-center">
+                <div class="text-sm opacity-75">⭐ Rep</div>
+                <div class="text-xl font-bold">${gameState.reputation}%</div>
+              </div>
+            </div>
+            <div class="mt-3 bg-gray-800 rounded-full h-2 overflow-hidden">
+              <div class="h-full bg-gradient-to-r from-green-500 to-yellow-500 transition-all duration-500" style="width: ${Math.min(100, (gameState.netWorth / 1000000) * 100)}%"></div>
+            </div>
+            <div class="text-center text-xs mt-1 opacity-75">Goal: $1,000,000 (${Math.round((gameState.netWorth / 1000000) * 100)}%)</div>
+          </div>
+
+          <!-- Message -->
+          ${gameState.message ? `
+            <div class="bg-white border-l-4 border-blue-500 p-4 rounded-lg shadow mb-6">
+              <p class="text-gray-700">${gameState.message}</p>
+            </div>
+          ` : ''}
+
+          <!-- Main Game Area -->
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Market -->
+            <div class="bg-white rounded-2xl p-6 shadow-lg">
+              <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-bold text-gray-800">🏪 Property Market</h2>
+                <span class="text-sm text-gray-500">Refreshes each turn</span>
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                ${gameState.availableProperties.map(p => `
+                  <div class="border-2 ${typeColors[p.type]} rounded-xl p-4 shadow-md hover:shadow-xl transition-all">
+                    <div class="text-4xl text-center mb-2">${p.image}</div>
+                    <h3 class="font-bold text-lg truncate">${p.name}</h3>
+                    <p class="text-xs text-gray-500 truncate">${p.address}</p>
+                    <p class="text-xs text-gray-600 mt-1 line-clamp-2">${p.description}</p>
+                    <div class="mt-3 space-y-1">
+                      <div class="flex justify-between text-sm">
+                        <span>Price:</span>
+                        <span class="font-bold text-green-700">$${p.currentPrice.toLocaleString()}</span>
+                      </div>
+                      <div class="flex justify-between text-sm">
+                        <span>Rent/turn:</span>
+                        <span class="font-bold text-blue-700">$${p.rentIncome.toLocaleString()}</span>
+                      </div>
+                      <div class="flex justify-between text-sm">
+                        <span>Condition:</span>
+                        <span class="${p.condition >= 70 ? 'text-green-600' : p.condition >= 40 ? 'text-yellow-600' : 'text-red-600'}">${p.condition}%</span>
+                      </div>
+                    </div>
+                    <button onclick="buyProperty('${p.id}')" ${gameState.cash < p.currentPrice ? 'disabled' : ''}
+                      class="w-full mt-3 py-2 rounded-lg font-bold transition-all ${gameState.cash >= p.currentPrice ? 'bg-green-600 hover:bg-green-700 text-white cursor-pointer' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}">
+                      ${gameState.cash >= p.currentPrice ? '🏠 Buy Property' : "💸 Can't Afford"}
+                    </button>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+
+            <!-- Portfolio -->
+            <div class="bg-white rounded-2xl p-6 shadow-lg">
+              <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-bold text-gray-800">📋 Your Portfolio</h2>
+                <span class="text-sm text-gray-500">${gameState.ownedProperties.length} properties</span>
+              </div>
+              ${gameState.ownedProperties.length === 0 ? `
+                <div class="text-center py-12 text-gray-500">
+                  <div class="text-5xl mb-4">🏚️</div>
+                  <p>No properties yet!</p>
+                  <p class="text-sm">Buy from the market to earn rent.</p>
+                </div>
+              ` : `
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 max-h-96 overflow-y-auto">
+                  ${gameState.ownedProperties.map(p => {
+                    const profit = p.currentPrice - p.purchasePrice;
+                    const profitPercent = Math.round((profit / p.purchasePrice) * 100);
+                    const repairCost = Math.round((100 - p.condition) * p.basePrice * 0.002);
+                    return `
+                      <div class="border-2 border-yellow-500 bg-yellow-50 rounded-xl p-4 shadow-md">
+                        <div class="flex justify-between items-start">
+                          <div class="text-3xl">${p.image}</div>
+                          <span class="text-xs px-2 py-1 rounded ${profit >= 0 ? 'bg-green-200 text-green-800' : 'bg-red-200 text-red-800'}">
+                            ${profit >= 0 ? '+' : ''}${profitPercent}%
+                          </span>
+                        </div>
+                        <h3 class="font-bold text-lg truncate mt-1">${p.name}</h3>
+                        <p class="text-xs text-gray-500">Owned ${p.turnsOwned} turns</p>
+                        <div class="mt-2 space-y-1">
+                          <div class="flex justify-between text-sm">
+                            <span>Value:</span>
+                            <span class="font-bold">$${p.currentPrice.toLocaleString()}</span>
+                          </div>
+                          <div class="flex justify-between text-sm">
+                            <span>Rent:</span>
+                            <span class="text-blue-700">$${p.rentIncome.toLocaleString()}/turn</span>
+                          </div>
+                          <div class="flex justify-between text-sm items-center">
+                            <span>Condition:</span>
+                            <div class="flex items-center gap-2">
+                              <div class="w-16 bg-gray-200 rounded-full h-2">
+                                <div class="h-full rounded-full ${p.condition >= 70 ? 'bg-green-500' : p.condition >= 40 ? 'bg-yellow-500' : 'bg-red-500'}" style="width: ${p.condition}%"></div>
+                              </div>
+                              <span class="${p.condition >= 70 ? 'text-green-600' : p.condition >= 40 ? 'text-yellow-600' : 'text-red-600'}">${p.condition}%</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div class="flex gap-2 mt-3">
+                          <button onclick="sellProperty('${p.id}')" class="flex-1 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-bold text-sm">💰 Sell</button>
+                          ${p.condition < 100 ? `
+                            <button onclick="repairProperty('${p.id}')" ${gameState.cash < repairCost ? 'disabled' : ''}
+                              class="flex-1 py-2 rounded-lg font-bold text-sm ${gameState.cash >= repairCost ? 'bg-blue-500 hover:bg-blue-600 text-white' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}">
+                              🔧 $${repairCost.toLocaleString()}
+                            </button>
+                          ` : ''}
+                        </div>
+                      </div>
+                    `;
+                  }).join('')}
+                </div>
+              `}
+            </div>
+          </div>
+
+          <!-- Actions -->
+          <div class="mt-6 flex justify-center gap-4">
+            <button onclick="nextTurn()" ${gameState.gameStatus !== 'playing' ? 'disabled' : ''}
+              class="px-8 py-4 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white rounded-xl font-bold text-xl shadow-lg transition-all disabled:opacity-50">
+              ⏭️ End Turn & Collect Rent
+            </button>
+            <button onclick="restartGame()" class="px-6 py-4 bg-gray-500 hover:bg-gray-600 text-white rounded-xl font-bold shadow-lg">
+              🔄 Restart
+            </button>
+          </div>
+
+          <!-- Tips -->
+          <div class="mt-6 bg-blue-50 rounded-xl p-4 text-center">
+            <p class="text-sm text-blue-800">
+              💡 <strong>Tips:</strong> Buy low, sell high! Keep properties in good condition for max rent. Watch market trends!
+            </p>
+          </div>
+        </div>
+
+        <!-- Event Modal -->
+        ${gameState.currentEvent ? `
+          <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div class="animate-bounce-once ${gameState.currentEvent.type === 'positive' ? 'bg-green-100 border-green-500' : 'bg-red-100 border-red-500'} border-4 rounded-2xl p-6 max-w-md w-full shadow-2xl">
+              <h2 class="text-2xl font-bold text-center mb-4">${gameState.currentEvent.title}</h2>
+              <p class="text-center text-gray-700 mb-6">${gameState.currentEvent.description}</p>
+              <button onclick="dismissEvent()" class="w-full py-3 bg-gray-800 hover:bg-gray-900 text-white rounded-xl font-bold text-lg">Continue</button>
+            </div>
+          </div>
+        ` : ''}
+
+        <!-- Game Over Modal -->
+        ${gameState.gameStatus !== 'playing' ? `
+          <div class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">
+            <div class="${gameState.gameStatus === 'won' ? 'bg-gradient-to-br from-yellow-400 to-orange-500' : 'bg-gradient-to-br from-gray-700 to-gray-900'} rounded-3xl p-8 max-w-md w-full shadow-2xl text-center">
+              <div class="text-6xl mb-4">${gameState.gameStatus === 'won' ? '🏆' : '💸'}</div>
+              <h2 class="text-3xl font-bold mb-2 ${gameState.gameStatus === 'won' ? 'text-gray-900' : 'text-white'}">
+                ${gameState.gameStatus === 'won' ? 'You Win!' : 'Game Over'}
+              </h2>
+              <p class="text-lg mb-4 ${gameState.gameStatus === 'won' ? 'text-gray-800' : 'text-gray-300'}">
+                ${gameState.gameStatus === 'won' ? 'You became a Real Estate Tycoon!' : 'Better luck next time!'}
+              </p>
+              <div class="${gameState.gameStatus === 'won' ? 'bg-white bg-opacity-50' : 'bg-gray-800'} rounded-xl p-4 mb-6">
+                <div class="grid grid-cols-2 gap-4">
+                  <div>
+                    <div class="text-sm ${gameState.gameStatus === 'won' ? 'text-gray-700' : 'text-gray-400'}">Final Net Worth</div>
+                    <div class="text-2xl font-bold ${gameState.gameStatus === 'won' ? 'text-green-700' : 'text-green-400'}">$${gameState.netWorth.toLocaleString()}</div>
+                  </div>
+                  <div>
+                    <div class="text-sm ${gameState.gameStatus === 'won' ? 'text-gray-700' : 'text-gray-400'}">Turns Played</div>
+                    <div class="text-2xl font-bold ${gameState.gameStatus === 'won' ? 'text-gray-900' : 'text-white'}">${gameState.turn}</div>
+                  </div>
+                </div>
+              </div>
+              <button onclick="restartGame()" class="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xl shadow-lg">
+                🔄 Play Again
+              </button>
+            </div>
+          </div>
+        ` : ''}
+      `;
+    }
+
+    // Initialize
+    gameState.availableProperties = generateMarketProperties(4);
+    render();
+  </script>
+</body>
+</html>
