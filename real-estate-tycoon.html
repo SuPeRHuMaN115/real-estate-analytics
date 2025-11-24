@@ -3,515 +3,944 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Real Estate Tycoon - Property Investment Game</title>
+  <title>Real Estate Tycoon - Ultimate Edition</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    .animate-bounce-once { animation: bounce 0.5s ease-in-out; }
-    @keyframes bounce {
-      0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-10px); }
-    }
-    .line-clamp-2 {
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
-    }
+    * { box-sizing: border-box; }
+    @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+    @keyframes pulse-green { 0%, 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); } 50% { box-shadow: 0 0 0 10px rgba(34, 197, 94, 0); } }
+    @keyframes pulse-red { 0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); } 50% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); } }
+    @keyframes slideIn { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    @keyframes bounce { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
+    @keyframes confetti { 0% { transform: translateY(0) rotate(0deg); opacity: 1; } 100% { transform: translateY(100vh) rotate(720deg); opacity: 0; } }
+    .shake { animation: shake 0.5s ease-in-out; }
+    .pulse-green { animation: pulse-green 1s ease-in-out; }
+    .pulse-red { animation: pulse-red 1s ease-in-out; }
+    .slide-in { animation: slideIn 0.3s ease-out; }
+    .bounce { animation: bounce 0.3s ease-in-out; }
+    .confetti { position: fixed; font-size: 2rem; animation: confetti 3s ease-out forwards; pointer-events: none; z-index: 1000; }
+    .glow-gold { box-shadow: 0 0 20px rgba(251, 191, 36, 0.6); }
+    .rival-card { transition: all 0.3s; }
+    .rival-card:hover { transform: scale(1.02); }
+    .hot-property { animation: pulse-green 2s infinite; }
+    .danger-zone { background: repeating-linear-gradient(45deg, #fef2f2, #fef2f2 10px, #fee2e2 10px, #fee2e2 20px); }
   </style>
 </head>
-<body class="bg-gradient-to-br from-gray-100 to-gray-200 min-h-screen">
+<body class="bg-gray-900 min-h-screen text-white">
   <div id="app"></div>
 
   <script>
-    // Game Data
-    const propertyTemplates = [
-      { id: 'starter-home', name: 'Cozy Starter Home', address: '123 Maple Street', type: 'house', basePrice: 85000, rentIncome: 800, condition: 85, image: '🏠', description: 'Perfect first investment. Solid neighborhood.' },
-      { id: 'downtown-apt', name: 'Downtown Studio', address: '456 Main Ave, Unit 12', type: 'apartment', basePrice: 120000, rentIncome: 1100, condition: 90, image: '🏢', description: 'Prime location near restaurants and nightlife.' },
-      { id: 'suburban-ranch', name: 'Suburban Ranch', address: '789 Oak Lane', type: 'house', basePrice: 175000, rentIncome: 1400, condition: 75, image: '🏡', description: 'Spacious family home with a big backyard.' },
-      { id: 'retail-strip', name: 'Strip Mall Unit', address: '321 Commerce Blvd', type: 'commercial', basePrice: 250000, rentIncome: 2200, condition: 80, image: '🏪', description: 'Commercial space with steady tenants.' },
-      { id: 'beachfront-condo', name: 'Beachfront Condo', address: '555 Ocean Drive', type: 'luxury', basePrice: 450000, rentIncome: 3500, condition: 95, image: '🏖️', description: 'Stunning ocean views. Premium rental.' },
-      { id: 'fixer-upper', name: 'The Fixer-Upper', address: '999 Broken Dreams Rd', type: 'house', basePrice: 45000, rentIncome: 600, condition: 35, image: '🏚️', description: 'Massive potential... if you handle repairs.' },
-      { id: 'office-building', name: 'Downtown Office', address: '100 Business Park Way', type: 'commercial', basePrice: 380000, rentIncome: 3200, condition: 88, image: '🏛️', description: 'Class A office with corporate tenants.' },
-      { id: 'luxury-penthouse', name: 'Skyline Penthouse', address: '1 Tower Plaza, PH1', type: 'luxury', basePrice: 750000, rentIncome: 5500, condition: 98, image: '✨', description: 'The crown jewel. Panoramic city views.' },
-      { id: 'student-housing', name: 'Student Housing', address: '420 University Ave', type: 'apartment', basePrice: 200000, rentIncome: 2000, condition: 65, image: '🎓', description: 'Near campus. High turnover but always full.' },
-      { id: 'warehouse', name: 'Industrial Warehouse', address: '800 Factory Lane', type: 'commercial', basePrice: 300000, rentIncome: 2800, condition: 70, image: '🏭', description: 'E-commerce boom = high storage demand.' },
-      { id: 'historic-brownstone', name: 'Historic Brownstone', address: '42 Heritage Row', type: 'luxury', basePrice: 550000, rentIncome: 4200, condition: 82, image: '🏰', description: 'Charming historic property.' },
-      { id: 'duplex', name: 'Income Duplex', address: '234 Double Street', type: 'house', basePrice: 165000, rentIncome: 1600, condition: 78, image: '🏘️', description: 'Two units = double the income.' },
-    ];
-
-    const gameEvents = [
-      { id: 'market-boom', title: '📈 Market Boom!', description: 'The real estate market is on fire! All property values increase by 15%.', type: 'positive',
-        effect: (state) => {
-          state.ownedProperties.forEach(p => p.currentPrice = Math.round(p.currentPrice * 1.15));
-          state.availableProperties.forEach(p => p.currentPrice = Math.round(p.currentPrice * 1.15));
-          state.marketTrend = 'bull';
-          return 'Property values jumped 15%!';
-        }
-      },
-      { id: 'market-crash', title: '📉 Market Correction!', description: 'Economic uncertainty causes property values to drop 12%.', type: 'negative',
-        effect: (state) => {
-          state.ownedProperties.forEach(p => p.currentPrice = Math.round(p.currentPrice * 0.88));
-          state.availableProperties.forEach(p => p.currentPrice = Math.round(p.currentPrice * 0.88));
-          state.marketTrend = 'bear';
-          return 'Property values dropped 12%!';
-        }
-      },
-      { id: 'rent-surge', title: '💰 Rent Surge!', description: 'Housing demand is up! Bonus 20% rental income this turn.', type: 'positive',
-        effect: (state) => {
-          const bonus = state.ownedProperties.reduce((sum, p) => sum + p.rentIncome * 0.2, 0);
-          state.cash += Math.round(bonus);
-          return `Bonus rent: $${Math.round(bonus).toLocaleString()}!`;
-        }
-      },
-      { id: 'emergency-repair', title: '🔧 Emergency Repairs!', description: 'One of your properties needs urgent repairs. Pay $5,000.', type: 'negative',
-        effect: (state) => {
-          if (state.ownedProperties.length === 0) return 'No properties to repair!';
-          if (state.cash >= 5000) { state.cash -= 5000; return 'Paid $5,000 for emergency repairs.'; }
-          const worst = state.ownedProperties.reduce((a, b) => a.condition < b.condition ? a : b);
-          worst.condition = Math.max(0, worst.condition - 20);
-          return `Couldn't afford repairs. ${worst.name} condition dropped!`;
-        }
-      },
-      { id: 'property-tax', title: '📋 Property Tax Due!', description: 'Annual taxes are due. Pay 2% of portfolio value.', type: 'negative',
-        effect: (state) => {
-          const totalValue = state.ownedProperties.reduce((sum, p) => sum + p.currentPrice, 0);
-          const tax = Math.round(totalValue * 0.02);
-          state.cash = Math.max(0, state.cash - tax);
-          return `Paid $${tax.toLocaleString()} in property taxes.`;
-        }
-      },
-      { id: 'inheritance', title: '🎁 Unexpected Inheritance!', description: 'A distant relative left you some money!', type: 'positive',
-        effect: (state) => {
-          const amount = 10000 + Math.floor(Math.random() * 20000);
-          state.cash += amount;
-          return `Received $${amount.toLocaleString()} inheritance!`;
-        }
-      },
-      { id: 'tenant-trouble', title: '😠 Problem Tenant!', description: 'A tenant caused damage and skipped town.', type: 'negative',
-        effect: (state) => {
-          if (state.ownedProperties.length === 0) return 'No tenants, no problems!';
-          const prop = state.ownedProperties[Math.floor(Math.random() * state.ownedProperties.length)];
-          state.cash = Math.max(0, state.cash - prop.rentIncome);
-          return `Lost $${prop.rentIncome.toLocaleString()} from ${prop.name}`;
-        }
-      },
-      { id: 'tv-show', title: '📺 Featured on TV!', description: 'Your property was on a popular show! Value +25%.', type: 'positive',
-        effect: (state) => {
-          if (state.ownedProperties.length === 0) return 'No properties to feature!';
-          const prop = state.ownedProperties[Math.floor(Math.random() * state.ownedProperties.length)];
-          prop.currentPrice = Math.round(prop.currentPrice * 1.25);
-          state.reputation = Math.min(100, state.reputation + 10);
-          return `${prop.name} is now worth 25% more!`;
-        }
-      },
-      { id: 'new-development', title: '🏗️ New Development!', description: 'A major development nearby boosts your values 10%!', type: 'positive',
-        effect: (state) => {
-          state.ownedProperties.forEach(p => p.currentPrice = Math.round(p.currentPrice * 1.1));
-          return 'Your properties increased 10% in value!';
-        }
-      },
-      { id: 'five-star-tenant', title: '⭐ Five-Star Tenant!', description: 'An excellent tenant signed a long lease! Double rent this turn.', type: 'positive',
-        effect: (state) => {
-          const bonus = state.ownedProperties.reduce((sum, p) => sum + p.rentIncome, 0);
-          state.cash += bonus;
-          state.reputation = Math.min(100, state.reputation + 5);
-          return `Bonus rent: $${bonus.toLocaleString()}!`;
-        }
-      },
-      { id: 'free-renovation', title: '🔨 Free Renovation!', description: 'A TV show wants to fix your worst property for free!', type: 'positive',
-        effect: (state) => {
-          if (state.ownedProperties.length === 0) return 'No properties to renovate!';
-          const worst = state.ownedProperties.reduce((a, b) => a.condition < b.condition ? a : b);
-          worst.condition = 100;
-          worst.currentPrice = Math.round(worst.currentPrice * 1.2);
-          return `${worst.name} is now in perfect condition!`;
-        }
-      },
-    ];
-
-    // Game State
-    let gameState = {
-      cash: 100000,
-      ownedProperties: [],
-      availableProperties: [],
-      turn: 1,
-      netWorth: 100000,
-      currentEvent: null,
-      gameStatus: 'playing',
-      message: 'Welcome to Real Estate Tycoon! Build your empire!',
-      marketTrend: 'stable',
-      reputation: 50,
+    // ==================== GAME CONFIGURATION ====================
+    const CONFIG = {
+      START_CASH: 150000,
+      WIN_AMOUNT: 2000000,
+      MAX_TURNS: 40,
+      LOAN_INTEREST: 0.08,
+      MAX_LOAN_MULTIPLIER: 2,
+      AUCTION_CHANCE: 0.25,
+      EVENT_CHANCE: 0.4,
+      RIVAL_COUNT: 3,
     };
 
-    // Helper Functions
-    function generateId() {
-      return Math.random().toString(36).substr(2, 9);
-    }
+    // ==================== RIVALS ====================
+    const RIVAL_TEMPLATES = [
+      { name: 'Marcus Steel', emoji: '🦈', personality: 'aggressive', color: 'red', catchphrase: 'Money never sleeps!', strategy: 'Buys expensive properties, bids high' },
+      { name: 'Olivia Chen', emoji: '🦊', personality: 'strategic', color: 'purple', catchphrase: 'Patience pays dividends.', strategy: 'Focuses on value, upgrades everything' },
+      { name: 'Wild Card Willie', emoji: '🃏', personality: 'chaotic', color: 'yellow', catchphrase: 'Fortune favors the bold!', strategy: 'Unpredictable, takes big risks' },
+      { name: 'Grandma Rose', emoji: '👵', personality: 'cautious', color: 'pink', catchphrase: 'Slow and steady, dear.', strategy: 'Only buys safe investments' },
+    ];
 
-    function generateMarketProperties(count = 4) {
-      const shuffled = [...propertyTemplates].sort(() => Math.random() - 0.5);
-      return shuffled.slice(0, count).map(template => ({
-        ...template,
-        id: `${template.id}-${generateId()}`,
-        currentPrice: Math.round(template.basePrice * (0.9 + Math.random() * 0.2)),
+    // ==================== NEIGHBORHOODS ====================
+    const NEIGHBORHOODS = [
+      { id: 'downtown', name: '🏙️ Downtown', riskLevel: 'medium', description: 'High traffic, steady appreciation', priceMultiplier: 1.2, rentMultiplier: 1.3 },
+      { id: 'suburbs', name: '🏡 Suburbs', riskLevel: 'low', description: 'Safe bet, family-friendly', priceMultiplier: 1.0, rentMultiplier: 1.0 },
+      { id: 'beachfront', name: '🏖️ Beachfront', riskLevel: 'high', description: 'Luxury area, volatile prices', priceMultiplier: 1.8, rentMultiplier: 1.5 },
+      { id: 'industrial', name: '🏭 Industrial', riskLevel: 'medium', description: 'Commercial focus, high yields', priceMultiplier: 0.9, rentMultiplier: 1.4 },
+    ];
+
+    // ==================== PROPERTIES ====================
+    const PROPERTY_TEMPLATES = [
+      { name: 'Starter Shack', type: 'house', basePrice: 50000, baseRent: 500, emoji: '🏚️', tier: 1 },
+      { name: 'Cozy Cottage', type: 'house', basePrice: 85000, baseRent: 750, emoji: '🏠', tier: 1 },
+      { name: 'Family Home', type: 'house', basePrice: 150000, baseRent: 1200, emoji: '🏡', tier: 2 },
+      { name: 'Studio Apartment', type: 'apartment', basePrice: 100000, baseRent: 900, emoji: '🏢', tier: 1 },
+      { name: 'Luxury Loft', type: 'apartment', basePrice: 250000, baseRent: 2000, emoji: '🌆', tier: 2 },
+      { name: 'Penthouse Suite', type: 'apartment', basePrice: 500000, baseRent: 4000, emoji: '✨', tier: 3 },
+      { name: 'Corner Store', type: 'commercial', basePrice: 120000, baseRent: 1100, emoji: '🏪', tier: 1 },
+      { name: 'Office Complex', type: 'commercial', basePrice: 350000, baseRent: 3000, emoji: '🏛️', tier: 2 },
+      { name: 'Shopping Mall', type: 'commercial', basePrice: 800000, baseRent: 7000, emoji: '🛍️', tier: 3 },
+      { name: 'Beach House', type: 'luxury', basePrice: 400000, baseRent: 3500, emoji: '🏖️', tier: 2 },
+      { name: 'Mansion', type: 'luxury', basePrice: 750000, baseRent: 6000, emoji: '🏰', tier: 3 },
+      { name: 'Skyscraper', type: 'luxury', basePrice: 1200000, baseRent: 10000, emoji: '🗼', tier: 3 },
+    ];
+
+    // ==================== UPGRADES ====================
+    const UPGRADES = [
+      { id: 'renovation', name: '🔨 Renovation', cost: 0.15, valueBoost: 1.25, rentBoost: 1.2, description: 'Fresh paint, new floors' },
+      { id: 'smart-home', name: '🤖 Smart Home', cost: 0.1, valueBoost: 1.15, rentBoost: 1.15, description: 'IoT everything' },
+      { id: 'pool', name: '🏊 Pool', cost: 0.2, valueBoost: 1.3, rentBoost: 1.25, description: 'Luxury amenity' },
+      { id: 'solar', name: '☀️ Solar Panels', cost: 0.12, valueBoost: 1.1, rentBoost: 1.3, description: 'Green energy savings' },
+      { id: 'security', name: '🔒 Security System', cost: 0.08, valueBoost: 1.1, rentBoost: 1.1, description: 'Peace of mind' },
+    ];
+
+    // ==================== EVENTS ====================
+    const EVENTS = [
+      { id: 'tech-boom', title: '💻 TECH BOOM!', description: 'A major tech company moved to town!', type: 'positive', effect: s => { s.ownedProperties.forEach(p => { p.currentPrice *= 1.2; p.rentIncome *= 1.15; }); return '+20% property values, +15% rent!'; } },
+      { id: 'market-crash', title: '📉 MARKET CRASH!', description: 'Economic recession hits hard!', type: 'negative', effect: s => { s.ownedProperties.forEach(p => p.currentPrice *= 0.75); s.rivals.forEach(r => r.netWorth *= 0.8); return '-25% property values! Rivals hurt too.'; } },
+      { id: 'gold-mine', title: '💰 GOLD DISCOVERED!', description: 'They found gold under your property!', type: 'jackpot', effect: s => { if(s.ownedProperties.length > 0) { const p = s.ownedProperties[Math.floor(Math.random()*s.ownedProperties.length)]; p.currentPrice *= 2; return `${p.name} doubled in value!`; } return 'No properties to benefit!'; } },
+      { id: 'earthquake', title: '🌋 EARTHQUAKE!', description: 'A 6.5 magnitude quake shakes the city!', type: 'disaster', effect: s => { s.ownedProperties.forEach(p => { p.condition = Math.max(10, p.condition - 30); }); return 'All properties damaged! Repair needed.'; } },
+      { id: 'celebrity', title: '⭐ CELEBRITY NEIGHBOR!', description: 'A famous celebrity bought next door!', type: 'positive', effect: s => { if(s.ownedProperties.length > 0) { const p = s.ownedProperties[Math.floor(Math.random()*s.ownedProperties.length)]; p.currentPrice *= 1.4; p.rentIncome *= 1.3; return `${p.name} is now famous! +40% value!`; } return 'No properties nearby!'; } },
+      { id: 'crime-wave', title: '🚨 CRIME WAVE!', description: 'Crime rates spike in the area!', type: 'negative', effect: s => { s.ownedProperties.forEach(p => p.rentIncome *= 0.8); return '-20% rent income this turn!'; } },
+      { id: 'inheritance', title: '👴 INHERITANCE!', description: 'A wealthy uncle left you money!', type: 'jackpot', effect: s => { const amount = 50000 + Math.floor(Math.random() * 100000); s.cash += amount; return `Received $${amount.toLocaleString()}!`; } },
+      { id: 'lawsuit', title: '⚖️ LAWSUIT!', description: 'A tenant is suing you!', type: 'negative', effect: s => { const cost = Math.min(s.cash, 25000 + Math.floor(Math.random() * 25000)); s.cash -= cost; return `Legal fees: -$${cost.toLocaleString()}`; } },
+      { id: 'viral', title: '📱 VIRAL LISTING!', description: 'Your property went viral on social media!', type: 'positive', effect: s => { if(s.ownedProperties.length > 0) { const p = s.ownedProperties[Math.floor(Math.random()*s.ownedProperties.length)]; p.currentPrice *= 1.5; return `${p.name} is internet famous! +50% value!`; } return 'Nothing to go viral!'; } },
+      { id: 'tax-break', title: '📋 TAX BREAK!', description: 'Government incentives for property owners!', type: 'positive', effect: s => { const bonus = s.ownedProperties.length * 5000; s.cash += bonus; return `Received $${bonus.toLocaleString()} in tax credits!`; } },
+      { id: 'bidding-war', title: '🔥 BIDDING WAR!', description: 'Multiple buyers want your property!', type: 'positive', effect: s => { if(s.ownedProperties.length > 0) { const p = s.ownedProperties[Math.floor(Math.random()*s.ownedProperties.length)]; const offer = Math.round(p.currentPrice * 1.5); s.pendingOffer = { property: p, amount: offer }; return `Someone offered $${offer.toLocaleString()} for ${p.name}!`; } return 'No properties to sell!'; } },
+      { id: 'renovation-show', title: '📺 TV RENOVATION!', description: 'A TV show wants to renovate for free!', type: 'jackpot', effect: s => { if(s.ownedProperties.length > 0) { const worst = s.ownedProperties.reduce((a,b) => a.condition < b.condition ? a : b); worst.condition = 100; worst.currentPrice *= 1.3; worst.upgrades = worst.upgrades || []; worst.upgrades.push('renovation'); return `${worst.name} fully renovated for FREE!`; } return 'No properties to renovate!'; } },
+    ];
+
+    // ==================== ACHIEVEMENTS ====================
+    const ACHIEVEMENTS = [
+      { id: 'first-buy', name: '🔑 First Keys', description: 'Buy your first property', check: s => s.ownedProperties.length >= 1 },
+      { id: 'landlord', name: '🏠 Landlord', description: 'Own 3 properties', check: s => s.ownedProperties.length >= 3 },
+      { id: 'tycoon', name: '👔 Tycoon', description: 'Own 5 properties', check: s => s.ownedProperties.length >= 5 },
+      { id: 'mogul', name: '🎩 Mogul', description: 'Own 8 properties', check: s => s.ownedProperties.length >= 8 },
+      { id: 'flipper', name: '🔄 House Flipper', description: 'Sell a property for 50%+ profit', check: s => s.stats.bestFlip >= 50 },
+      { id: 'master-flipper', name: '💎 Master Flipper', description: 'Sell a property for 100%+ profit', check: s => s.stats.bestFlip >= 100 },
+      { id: 'risk-taker', name: '🎲 Risk Taker', description: 'Take out a loan over $200k', check: s => s.stats.maxLoan >= 200000 },
+      { id: 'debt-free', name: '🆓 Debt Free', description: 'Pay off a loan completely', check: s => s.stats.loansPaid >= 1 },
+      { id: 'survivor', name: '🛡️ Survivor', description: 'Survive a market crash', check: s => s.stats.crashesSurvived >= 1 },
+      { id: 'diversified', name: '📊 Diversified', description: 'Own properties in all neighborhoods', check: s => new Set(s.ownedProperties.map(p => p.neighborhood)).size >= 4 },
+      { id: 'upgrader', name: '⬆️ Upgrader', description: 'Fully upgrade a property', check: s => s.ownedProperties.some(p => (p.upgrades?.length || 0) >= 3) },
+      { id: 'millionaire', name: '💵 Millionaire', description: 'Reach $1M net worth', check: s => s.netWorth >= 1000000 },
+      { id: 'rival-crusher', name: '👑 Rival Crusher', description: 'Have higher net worth than all rivals', check: s => s.rivals.every(r => s.netWorth > r.netWorth) },
+    ];
+
+    // ==================== GAME STATE ====================
+    let game = null;
+
+    function createNewGame() {
+      const rivals = RIVAL_TEMPLATES.slice(0, CONFIG.RIVAL_COUNT).map(r => ({
+        ...r,
+        cash: CONFIG.START_CASH,
+        netWorth: CONFIG.START_CASH,
+        properties: [],
+        mood: 'neutral',
       }));
+
+      return {
+        cash: CONFIG.START_CASH,
+        loan: 0,
+        loanTurnsRemaining: 0,
+        ownedProperties: [],
+        availableProperties: [],
+        turn: 1,
+        netWorth: CONFIG.START_CASH,
+        rivals: rivals,
+        currentEvent: null,
+        pendingOffer: null,
+        auction: null,
+        gameStatus: 'playing',
+        message: null,
+        notifications: [],
+        achievements: [],
+        stats: { bestFlip: 0, maxLoan: 0, loansPaid: 0, crashesSurvived: 0, propertiesBought: 0, propertiesSold: 0 },
+        selectedNeighborhood: 'all',
+      };
     }
 
-    function calculateNetWorth() {
-      const propertyValue = gameState.ownedProperties.reduce((sum, p) => sum + p.currentPrice, 0);
-      return gameState.cash + propertyValue;
+    // ==================== HELPER FUNCTIONS ====================
+    function genId() { return Math.random().toString(36).substr(2, 9); }
+
+    function notify(msg, type = 'info') {
+      game.notifications.unshift({ id: genId(), msg, type, time: Date.now() });
+      if (game.notifications.length > 5) game.notifications.pop();
     }
 
-    function getRandomEvent() {
-      if (Math.random() > 0.35) return null;
-      return gameEvents[Math.floor(Math.random() * gameEvents.length)];
+    function generateProperty() {
+      const template = PROPERTY_TEMPLATES[Math.floor(Math.random() * PROPERTY_TEMPLATES.length)];
+      const neighborhood = NEIGHBORHOODS[Math.floor(Math.random() * NEIGHBORHOODS.length)];
+      const variance = 0.8 + Math.random() * 0.4;
+      const condition = 50 + Math.floor(Math.random() * 50);
+
+      return {
+        id: genId(),
+        ...template,
+        neighborhood: neighborhood.id,
+        neighborhoodData: neighborhood,
+        currentPrice: Math.round(template.basePrice * neighborhood.priceMultiplier * variance),
+        rentIncome: Math.round(template.baseRent * neighborhood.rentMultiplier * variance),
+        condition: condition,
+        upgrades: [],
+        turnsOwned: 0,
+        purchasePrice: 0,
+        isHot: Math.random() < 0.15,
+      };
     }
 
-    // Game Actions
+    function generateMarket(count = 6) {
+      return Array(count).fill(null).map(() => generateProperty());
+    }
+
+    function calculateNetWorth(entity) {
+      const propertyValue = (entity.ownedProperties || entity.properties || []).reduce((sum, p) => sum + p.currentPrice, 0);
+      return (entity.cash || 0) + propertyValue - (entity.loan || 0);
+    }
+
+    function checkAchievements() {
+      ACHIEVEMENTS.forEach(ach => {
+        if (!game.achievements.includes(ach.id) && ach.check(game)) {
+          game.achievements.push(ach.id);
+          notify(`🏆 Achievement: ${ach.name}!`, 'achievement');
+        }
+      });
+    }
+
+    function spawnConfetti() {
+      const emojis = ['🎉', '🎊', '✨', '💰', '🏆', '⭐'];
+      for (let i = 0; i < 30; i++) {
+        setTimeout(() => {
+          const confetti = document.createElement('div');
+          confetti.className = 'confetti';
+          confetti.textContent = emojis[Math.floor(Math.random() * emojis.length)];
+          confetti.style.left = Math.random() * 100 + 'vw';
+          confetti.style.top = '-50px';
+          document.body.appendChild(confetti);
+          setTimeout(() => confetti.remove(), 3000);
+        }, i * 100);
+      }
+    }
+
+    // ==================== RIVAL AI ====================
+    function rivalTakeTurn(rival) {
+      const actions = [];
+
+      // Collect rent
+      let rent = 0;
+      rival.properties.forEach(p => {
+        rent += Math.round(p.rentIncome * (p.condition / 100));
+        p.condition = Math.max(10, p.condition - 2);
+        p.turnsOwned++;
+      });
+      rival.cash += rent;
+      if (rent > 0) actions.push(`collected $${rent.toLocaleString()} rent`);
+
+      // Decide to buy
+      const affordableProperties = game.availableProperties.filter(p => p.currentPrice <= rival.cash * 0.8);
+
+      if (affordableProperties.length > 0 && Math.random() < 0.6) {
+        let target = null;
+
+        switch (rival.personality) {
+          case 'aggressive':
+            target = affordableProperties.reduce((a, b) => a.currentPrice > b.currentPrice ? a : b);
+            break;
+          case 'strategic':
+            target = affordableProperties.reduce((a, b) => (a.rentIncome / a.currentPrice) > (b.rentIncome / b.currentPrice) ? a : b);
+            break;
+          case 'cautious':
+            target = affordableProperties.filter(p => p.tier === 1).sort((a, b) => a.currentPrice - b.currentPrice)[0];
+            break;
+          case 'chaotic':
+            target = affordableProperties[Math.floor(Math.random() * affordableProperties.length)];
+            break;
+        }
+
+        if (target) {
+          rival.cash -= target.currentPrice;
+          target.purchasePrice = target.currentPrice;
+          rival.properties.push(target);
+          game.availableProperties = game.availableProperties.filter(p => p.id !== target.id);
+          actions.push(`bought ${target.name}`);
+          rival.mood = 'happy';
+        }
+      }
+
+      // Sometimes sell
+      if (rival.properties.length > 0 && Math.random() < 0.2) {
+        const profitable = rival.properties.filter(p => p.currentPrice > p.purchasePrice * 1.3);
+        if (profitable.length > 0) {
+          const toSell = profitable[0];
+          rival.cash += toSell.currentPrice;
+          rival.properties = rival.properties.filter(p => p.id !== toSell.id);
+          actions.push(`sold ${toSell.name}`);
+        }
+      }
+
+      rival.netWorth = calculateNetWorth(rival);
+
+      if (actions.length > 0) {
+        notify(`${rival.emoji} ${rival.name} ${actions.join(', ')}`, 'rival');
+      }
+    }
+
+    // ==================== GAME ACTIONS ====================
     function buyProperty(propertyId) {
-      const property = gameState.availableProperties.find(p => p.id === propertyId);
-      if (!property || gameState.cash < property.currentPrice) {
-        gameState.message = "Can't afford this property!";
-        render();
+      const property = game.availableProperties.find(p => p.id === propertyId);
+      if (!property) return;
+
+      const totalFunds = game.cash;
+      if (totalFunds < property.currentPrice) {
+        notify("💸 Can't afford this! Take a loan?", 'error');
         return;
       }
 
-      gameState.cash -= property.currentPrice;
-      gameState.ownedProperties.push({
-        ...property,
-        purchasePrice: property.currentPrice,
-        turnsOwned: 0,
-      });
-      gameState.availableProperties = gameState.availableProperties.filter(p => p.id !== propertyId);
-      gameState.message = `Purchased ${property.name} for $${property.currentPrice.toLocaleString()}!`;
-      gameState.reputation = Math.min(100, gameState.reputation + 2);
-      gameState.netWorth = calculateNetWorth();
+      game.cash -= property.currentPrice;
+      property.purchasePrice = property.currentPrice;
+      property.turnsOwned = 0;
+      game.ownedProperties.push(property);
+      game.availableProperties = game.availableProperties.filter(p => p.id !== propertyId);
+      game.stats.propertiesBought++;
+
+      notify(`🔑 Bought ${property.name} for $${property.currentPrice.toLocaleString()}!`, 'success');
+      updateNetWorth();
+      checkAchievements();
       render();
     }
 
     function sellProperty(propertyId) {
-      const property = gameState.ownedProperties.find(p => p.id === propertyId);
+      const property = game.ownedProperties.find(p => p.id === propertyId);
       if (!property) return;
 
       const profit = property.currentPrice - property.purchasePrice;
       const profitPercent = Math.round((profit / property.purchasePrice) * 100);
 
-      gameState.cash += property.currentPrice;
-      gameState.ownedProperties = gameState.ownedProperties.filter(p => p.id !== propertyId);
-      gameState.message = `Sold ${property.name} for $${property.currentPrice.toLocaleString()}! ${
-        profit >= 0 ? `Profit: $${profit.toLocaleString()} (+${profitPercent}%)` : `Loss: $${Math.abs(profit).toLocaleString()} (${profitPercent}%)`
-      }`;
-      gameState.netWorth = calculateNetWorth();
+      game.cash += property.currentPrice;
+      game.ownedProperties = game.ownedProperties.filter(p => p.id !== propertyId);
+      game.stats.propertiesSold++;
+      game.stats.bestFlip = Math.max(game.stats.bestFlip, profitPercent);
+
+      const emoji = profit >= 0 ? '📈' : '📉';
+      notify(`${emoji} Sold ${property.name}! ${profit >= 0 ? 'Profit' : 'Loss'}: $${Math.abs(profit).toLocaleString()} (${profitPercent >= 0 ? '+' : ''}${profitPercent}%)`, profit >= 0 ? 'success' : 'error');
+
+      updateNetWorth();
+      checkAchievements();
+      render();
+    }
+
+    function upgradeProperty(propertyId, upgradeId) {
+      const property = game.ownedProperties.find(p => p.id === propertyId);
+      const upgrade = UPGRADES.find(u => u.id === upgradeId);
+      if (!property || !upgrade) return;
+      if (property.upgrades?.includes(upgradeId)) return;
+
+      const cost = Math.round(property.currentPrice * upgrade.cost);
+      if (game.cash < cost) {
+        notify("💸 Can't afford this upgrade!", 'error');
+        return;
+      }
+
+      game.cash -= cost;
+      property.upgrades = property.upgrades || [];
+      property.upgrades.push(upgradeId);
+      property.currentPrice = Math.round(property.currentPrice * upgrade.valueBoost);
+      property.rentIncome = Math.round(property.rentIncome * upgrade.rentBoost);
+
+      notify(`⬆️ Upgraded ${property.name} with ${upgrade.name}!`, 'success');
+      updateNetWorth();
+      checkAchievements();
       render();
     }
 
     function repairProperty(propertyId) {
-      const property = gameState.ownedProperties.find(p => p.id === propertyId);
+      const property = game.ownedProperties.find(p => p.id === propertyId);
       if (!property) return;
 
-      const repairCost = Math.round((100 - property.condition) * property.basePrice * 0.002);
-      if (gameState.cash < repairCost) {
-        gameState.message = `Can't afford repairs ($${repairCost.toLocaleString()})!`;
-        render();
+      const repairCost = Math.round((100 - property.condition) * property.currentPrice * 0.003);
+      if (game.cash < repairCost) {
+        notify("💸 Can't afford repairs!", 'error');
         return;
       }
 
-      gameState.cash -= repairCost;
+      game.cash -= repairCost;
       property.condition = 100;
-      property.currentPrice = Math.round(property.currentPrice * (property.condition < 50 ? 1.15 : 1.05));
-      gameState.message = `Repaired ${property.name} for $${repairCost.toLocaleString()}!`;
-      gameState.netWorth = calculateNetWorth();
+      notify(`🔧 Repaired ${property.name} for $${repairCost.toLocaleString()}!`, 'success');
+      updateNetWorth();
       render();
     }
 
-    function nextTurn() {
-      // Collect rent
-      let rentCollected = 0;
-      gameState.ownedProperties.forEach(p => {
-        const conditionMultiplier = p.condition / 100;
-        rentCollected += Math.round(p.rentIncome * conditionMultiplier);
-        p.condition = Math.max(0, p.condition - 2);
-        p.turnsOwned++;
-        if (p.condition < 50) p.rentIncome = Math.round(p.rentIncome * 0.95);
-      });
-      gameState.cash += rentCollected;
-
-      // Refresh market
-      const keepCount = Math.floor(Math.random() * 2) + 1;
-      const kept = gameState.availableProperties.sort(() => Math.random() - 0.5).slice(0, keepCount);
-      gameState.availableProperties = [...kept, ...generateMarketProperties(4 - kept.length)];
-
-      gameState.turn++;
-      gameState.message = rentCollected > 0
-        ? `Turn ${gameState.turn}: Collected $${rentCollected.toLocaleString()} in rent.`
-        : `Turn ${gameState.turn}: No rental income yet. Buy properties!`;
-
-      // Random event
-      const event = getRandomEvent();
-      if (event) {
-        gameState.currentEvent = event;
-        const effectMsg = event.effect(gameState);
-        gameState.message = effectMsg;
+    function takeLoan(amount) {
+      const maxLoan = game.netWorth * CONFIG.MAX_LOAN_MULTIPLIER;
+      if (game.loan + amount > maxLoan) {
+        notify(`🏦 Maximum loan is $${Math.round(maxLoan).toLocaleString()}!`, 'error');
+        return;
       }
 
-      gameState.netWorth = calculateNetWorth();
+      game.loan += amount;
+      game.cash += amount;
+      game.loanTurnsRemaining = 10;
+      game.stats.maxLoan = Math.max(game.stats.maxLoan, game.loan);
 
-      // Check win/lose
-      if (gameState.netWorth >= 1000000) {
-        gameState.gameStatus = 'won';
-        gameState.message = `🎉 You're a Real Estate Mogul with $${gameState.netWorth.toLocaleString()}!`;
-      } else if (gameState.netWorth <= 0 && gameState.ownedProperties.length === 0) {
-        gameState.gameStatus = 'lost';
-        gameState.message = '💸 GAME OVER: You went bankrupt!';
-      } else if (gameState.turn > 50) {
-        if (gameState.netWorth >= 500000) {
-          gameState.gameStatus = 'won';
-          gameState.message = `🏆 Time's up! You finished with $${gameState.netWorth.toLocaleString()}!`;
-        } else {
-          gameState.gameStatus = 'lost';
-          gameState.message = `⏰ Time's up! Only $${gameState.netWorth.toLocaleString()}. Try again!`;
+      notify(`🏦 Took out $${amount.toLocaleString()} loan! Pay it back in 10 turns.`, 'warning');
+      updateNetWorth();
+      checkAchievements();
+      render();
+    }
+
+    function payLoan(amount) {
+      const payment = Math.min(amount, game.loan, game.cash);
+      if (payment <= 0) return;
+
+      game.cash -= payment;
+      game.loan -= payment;
+
+      if (game.loan <= 0) {
+        game.loan = 0;
+        game.loanTurnsRemaining = 0;
+        game.stats.loansPaid++;
+        notify('🎉 Loan fully paid off!', 'success');
+      } else {
+        notify(`💳 Paid $${payment.toLocaleString()} towards loan.`, 'info');
+      }
+
+      updateNetWorth();
+      checkAchievements();
+      render();
+    }
+
+    function acceptOffer() {
+      if (!game.pendingOffer) return;
+      const { property, amount } = game.pendingOffer;
+
+      game.cash += amount;
+      game.ownedProperties = game.ownedProperties.filter(p => p.id !== property.id);
+
+      const profit = amount - property.purchasePrice;
+      game.stats.bestFlip = Math.max(game.stats.bestFlip, Math.round((profit / property.purchasePrice) * 100));
+
+      notify(`💰 Sold ${property.name} for $${amount.toLocaleString()}!`, 'success');
+      game.pendingOffer = null;
+      updateNetWorth();
+      checkAchievements();
+      render();
+    }
+
+    function declineOffer() {
+      notify('❌ Declined the offer.', 'info');
+      game.pendingOffer = null;
+      render();
+    }
+
+    function placeBid(amount) {
+      if (!game.auction || game.cash < amount) return;
+
+      game.auction.playerBid = amount;
+
+      // Rivals decide to counter-bid
+      game.auction.rivalBids = game.rivals.map(rival => {
+        if (rival.cash < amount * 1.1) return { rival, bid: 0, out: true };
+
+        let bidChance = 0.5;
+        if (rival.personality === 'aggressive') bidChance = 0.8;
+        if (rival.personality === 'cautious') bidChance = 0.2;
+        if (rival.personality === 'chaotic') bidChance = Math.random();
+
+        if (Math.random() < bidChance && rival.cash >= amount * 1.1) {
+          const newBid = Math.round(amount * (1.05 + Math.random() * 0.15));
+          return { rival, bid: Math.min(newBid, rival.cash), out: false };
         }
+        return { rival, bid: 0, out: true };
+      });
+
+      const activeBids = game.auction.rivalBids.filter(b => !b.out);
+      const highestRivalBid = activeBids.length > 0 ? Math.max(...activeBids.map(b => b.bid)) : 0;
+
+      if (highestRivalBid > amount) {
+        const winner = activeBids.find(b => b.bid === highestRivalBid);
+        notify(`${winner.rival.emoji} ${winner.rival.name} outbid you with $${highestRivalBid.toLocaleString()}!`, 'rival');
+        winner.rival.cash -= highestRivalBid;
+        game.auction.property.purchasePrice = highestRivalBid;
+        winner.rival.properties.push(game.auction.property);
+        winner.rival.netWorth = calculateNetWorth(winner.rival);
+      } else {
+        // Player wins!
+        game.cash -= amount;
+        game.auction.property.purchasePrice = amount;
+        game.ownedProperties.push(game.auction.property);
+        game.stats.propertiesBought++;
+        notify(`🎉 You won the auction for $${amount.toLocaleString()}!`, 'success');
+        spawnConfetti();
+      }
+
+      game.availableProperties = game.availableProperties.filter(p => p.id !== game.auction.property.id);
+      game.auction = null;
+      updateNetWorth();
+      checkAchievements();
+      render();
+    }
+
+    function skipAuction() {
+      notify('👋 Skipped the auction.', 'info');
+      // A rival might buy it
+      const interestedRival = game.rivals.find(r => r.cash >= game.auction.property.currentPrice);
+      if (interestedRival && Math.random() < 0.5) {
+        interestedRival.cash -= game.auction.property.currentPrice;
+        game.auction.property.purchasePrice = game.auction.property.currentPrice;
+        interestedRival.properties.push(game.auction.property);
+        interestedRival.netWorth = calculateNetWorth(interestedRival);
+        game.availableProperties = game.availableProperties.filter(p => p.id !== game.auction.property.id);
+        notify(`${interestedRival.emoji} ${interestedRival.name} bought it instead!`, 'rival');
+      }
+      game.auction = null;
+      render();
+    }
+
+    function updateNetWorth() {
+      game.netWorth = calculateNetWorth(game);
+    }
+
+    function nextTurn() {
+      if (game.gameStatus !== 'playing') return;
+
+      // Collect rent
+      let totalRent = 0;
+      game.ownedProperties.forEach(p => {
+        const effectiveRent = Math.round(p.rentIncome * (p.condition / 100));
+        totalRent += effectiveRent;
+        p.condition = Math.max(10, p.condition - 3);
+        p.turnsOwned++;
+      });
+      game.cash += totalRent;
+      if (totalRent > 0) notify(`💰 Collected $${totalRent.toLocaleString()} in rent!`, 'success');
+
+      // Loan interest
+      if (game.loan > 0) {
+        const interest = Math.round(game.loan * CONFIG.LOAN_INTEREST);
+        game.cash -= interest;
+        game.loanTurnsRemaining--;
+        notify(`🏦 Loan interest: -$${interest.toLocaleString()}`, 'warning');
+
+        if (game.loanTurnsRemaining <= 0 && game.loan > 0) {
+          if (game.cash >= game.loan) {
+            game.cash -= game.loan;
+            notify(`🏦 Loan auto-repaid: -$${game.loan.toLocaleString()}`, 'warning');
+            game.loan = 0;
+            game.stats.loansPaid++;
+          } else {
+            // Forced to sell!
+            notify('🚨 LOAN DEFAULT! Forced to sell property!', 'error');
+            if (game.ownedProperties.length > 0) {
+              const toSell = game.ownedProperties[0];
+              game.cash += Math.round(toSell.currentPrice * 0.7); // Penalty
+              game.ownedProperties.shift();
+            }
+            game.loan = Math.max(0, game.loan - game.cash);
+            game.cash = Math.max(0, game.cash - game.loan);
+          }
+        }
+      }
+
+      // Market fluctuation
+      game.availableProperties.forEach(p => {
+        const change = 0.95 + Math.random() * 0.1;
+        p.currentPrice = Math.round(p.currentPrice * change);
+      });
+      game.ownedProperties.forEach(p => {
+        const change = 0.97 + Math.random() * 0.06;
+        p.currentPrice = Math.round(p.currentPrice * change);
+      });
+
+      // Rivals take turns
+      game.rivals.forEach(rival => rivalTakeTurn(rival));
+
+      // Refresh market
+      const keepCount = Math.min(3, game.availableProperties.length);
+      game.availableProperties = [
+        ...game.availableProperties.slice(0, keepCount),
+        ...generateMarket(6 - keepCount)
+      ];
+
+      // Random event
+      if (Math.random() < CONFIG.EVENT_CHANCE) {
+        const event = EVENTS[Math.floor(Math.random() * EVENTS.length)];
+        game.currentEvent = event;
+        const result = event.effect(game);
+        game.currentEvent.result = result;
+        if (event.id === 'market-crash') game.stats.crashesSurvived++;
+      }
+
+      // Auction chance
+      if (!game.currentEvent && Math.random() < CONFIG.AUCTION_CHANCE) {
+        const hotProperty = generateProperty();
+        hotProperty.isHot = true;
+        hotProperty.currentPrice = Math.round(hotProperty.currentPrice * 0.85); // Starting price discount
+        game.auction = {
+          property: hotProperty,
+          playerBid: 0,
+          rivalBids: [],
+          minBid: hotProperty.currentPrice,
+        };
+        game.availableProperties.push(hotProperty);
+      }
+
+      game.turn++;
+      updateNetWorth();
+      checkAchievements();
+
+      // Win/lose check
+      if (game.netWorth >= CONFIG.WIN_AMOUNT) {
+        game.gameStatus = 'won';
+        spawnConfetti();
+      } else if (game.netWorth <= 0 && game.ownedProperties.length === 0) {
+        game.gameStatus = 'lost';
+      } else if (game.turn > CONFIG.MAX_TURNS) {
+        const playerRank = game.rivals.filter(r => r.netWorth > game.netWorth).length + 1;
+        game.gameStatus = playerRank === 1 ? 'won' : 'lost';
+        game.finalRank = playerRank;
+        if (playerRank === 1) spawnConfetti();
       }
 
       render();
     }
 
     function dismissEvent() {
-      gameState.currentEvent = null;
+      game.currentEvent = null;
       render();
     }
 
     function restartGame() {
-      gameState = {
-        cash: 100000,
-        ownedProperties: [],
-        availableProperties: generateMarketProperties(4),
-        turn: 1,
-        netWorth: 100000,
-        currentEvent: null,
-        gameStatus: 'playing',
-        message: 'New game started! Build your empire!',
-        marketTrend: 'stable',
-        reputation: 50,
-      };
+      game = createNewGame();
+      game.availableProperties = generateMarket(6);
       render();
     }
 
-    // Render Function
+    // ==================== RENDER ====================
     function render() {
-      const typeColors = {
-        house: 'border-green-500 bg-green-50',
-        apartment: 'border-blue-500 bg-blue-50',
-        commercial: 'border-orange-500 bg-orange-50',
-        luxury: 'border-purple-500 bg-purple-50',
-      };
+      const app = document.getElementById('app');
 
-      const trendIcon = gameState.marketTrend === 'bull' ? '📈' : gameState.marketTrend === 'bear' ? '📉' : '➡️';
-      const trendColor = gameState.marketTrend === 'bull' ? 'text-green-400' : gameState.marketTrend === 'bear' ? 'text-red-400' : 'text-gray-300';
+      // Leaderboard
+      const allPlayers = [
+        { name: 'You', emoji: '🧑', netWorth: game.netWorth, isPlayer: true },
+        ...game.rivals.map(r => ({ name: r.name, emoji: r.emoji, netWorth: r.netWorth, color: r.color }))
+      ].sort((a, b) => b.netWorth - a.netWorth);
 
-      document.getElementById('app').innerHTML = `
-        <div class="p-4 md:p-6 max-w-7xl mx-auto">
+      const playerRank = allPlayers.findIndex(p => p.isPlayer) + 1;
+
+      app.innerHTML = `
+        <div class="p-3 md:p-6 max-w-7xl mx-auto">
           <!-- Header -->
-          <div class="text-center mb-6">
-            <h1 class="text-4xl md:text-5xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-              🏠 Real Estate Tycoon
+          <div class="text-center mb-4">
+            <h1 class="text-3xl md:text-5xl font-black bg-gradient-to-r from-yellow-400 via-red-500 to-purple-600 bg-clip-text text-transparent">
+              🏠 REAL ESTATE TYCOON
             </h1>
-            <p class="text-gray-600 mt-2">Build your property empire and reach $1,000,000!</p>
+            <p class="text-gray-400 text-sm">Become the ultimate property mogul!</p>
           </div>
 
-          <!-- Stats Bar -->
-          <div class="bg-gradient-to-r from-blue-900 to-purple-900 text-white p-4 rounded-xl shadow-lg mb-6">
-            <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
-              <div class="text-center">
-                <div class="text-sm opacity-75">💵 Cash</div>
-                <div class="text-xl font-bold text-green-400">$${gameState.cash.toLocaleString()}</div>
+          <!-- Top Stats Bar -->
+          <div class="bg-gradient-to-r from-gray-800 to-gray-900 rounded-xl p-4 mb-4 border border-gray-700">
+            <div class="grid grid-cols-2 md:grid-cols-6 gap-3 text-center">
+              <div>
+                <div class="text-xs text-gray-400">💵 Cash</div>
+                <div class="text-lg font-bold text-green-400">$${game.cash.toLocaleString()}</div>
               </div>
-              <div class="text-center">
-                <div class="text-sm opacity-75">💎 Net Worth</div>
-                <div class="text-xl font-bold text-yellow-400">$${gameState.netWorth.toLocaleString()}</div>
+              <div>
+                <div class="text-xs text-gray-400">💎 Net Worth</div>
+                <div class="text-lg font-bold text-yellow-400">$${game.netWorth.toLocaleString()}</div>
               </div>
-              <div class="text-center">
-                <div class="text-sm opacity-75">📅 Turn</div>
-                <div class="text-xl font-bold">${gameState.turn} / 50</div>
+              <div>
+                <div class="text-xs text-gray-400">🏠 Properties</div>
+                <div class="text-lg font-bold">${game.ownedProperties.length}</div>
               </div>
-              <div class="text-center">
-                <div class="text-sm opacity-75">Market</div>
-                <div class="text-xl font-bold ${trendColor}">${trendIcon} ${gameState.marketTrend.charAt(0).toUpperCase() + gameState.marketTrend.slice(1)}</div>
+              <div>
+                <div class="text-xs text-gray-400">📅 Turn</div>
+                <div class="text-lg font-bold">${game.turn}/${CONFIG.MAX_TURNS}</div>
               </div>
-              <div class="text-center">
-                <div class="text-sm opacity-75">⭐ Rep</div>
-                <div class="text-xl font-bold">${gameState.reputation}%</div>
+              <div>
+                <div class="text-xs text-gray-400">🏆 Rank</div>
+                <div class="text-lg font-bold ${playerRank === 1 ? 'text-yellow-400' : ''}">#${playerRank}</div>
+              </div>
+              <div>
+                <div class="text-xs text-gray-400">🏦 Loan</div>
+                <div class="text-lg font-bold ${game.loan > 0 ? 'text-red-400' : 'text-gray-500'}">$${game.loan.toLocaleString()}</div>
               </div>
             </div>
-            <div class="mt-3 bg-gray-800 rounded-full h-2 overflow-hidden">
-              <div class="h-full bg-gradient-to-r from-green-500 to-yellow-500 transition-all duration-500" style="width: ${Math.min(100, (gameState.netWorth / 1000000) * 100)}%"></div>
+            <!-- Progress to goal -->
+            <div class="mt-3">
+              <div class="flex justify-between text-xs text-gray-400 mb-1">
+                <span>Progress to $${(CONFIG.WIN_AMOUNT/1000000)}M</span>
+                <span>${Math.round((game.netWorth / CONFIG.WIN_AMOUNT) * 100)}%</span>
+              </div>
+              <div class="h-2 bg-gray-700 rounded-full overflow-hidden">
+                <div class="h-full bg-gradient-to-r from-green-500 via-yellow-500 to-purple-500 transition-all duration-500" style="width: ${Math.min(100, (game.netWorth / CONFIG.WIN_AMOUNT) * 100)}%"></div>
+              </div>
             </div>
-            <div class="text-center text-xs mt-1 opacity-75">Goal: $1,000,000 (${Math.round((gameState.netWorth / 1000000) * 100)}%)</div>
           </div>
 
-          <!-- Message -->
-          ${gameState.message ? `
-            <div class="bg-white border-l-4 border-blue-500 p-4 rounded-lg shadow mb-6">
-              <p class="text-gray-700">${gameState.message}</p>
+          <!-- Notifications -->
+          ${game.notifications.length > 0 ? `
+            <div class="mb-4 space-y-1">
+              ${game.notifications.slice(0, 3).map((n, i) => `
+                <div class="slide-in text-sm px-3 py-2 rounded-lg ${
+                  n.type === 'success' ? 'bg-green-900/50 text-green-300 border border-green-700' :
+                  n.type === 'error' ? 'bg-red-900/50 text-red-300 border border-red-700' :
+                  n.type === 'achievement' ? 'bg-yellow-900/50 text-yellow-300 border border-yellow-700' :
+                  n.type === 'rival' ? 'bg-purple-900/50 text-purple-300 border border-purple-700' :
+                  n.type === 'warning' ? 'bg-orange-900/50 text-orange-300 border border-orange-700' :
+                  'bg-gray-800 text-gray-300 border border-gray-700'
+                }" style="opacity: ${1 - i * 0.3}">
+                  ${n.msg}
+                </div>
+              `).join('')}
             </div>
           ` : ''}
 
-          <!-- Main Game Area -->
-          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <!-- Market -->
-            <div class="bg-white rounded-2xl p-6 shadow-lg">
-              <div class="flex justify-between items-center mb-4">
-                <h2 class="text-2xl font-bold text-gray-800">🏪 Property Market</h2>
-                <span class="text-sm text-gray-500">Refreshes each turn</span>
+          <!-- Rivals -->
+          <div class="mb-4 bg-gray-800/50 rounded-xl p-3 border border-gray-700">
+            <h3 class="text-sm font-bold text-gray-400 mb-2">🏁 LEADERBOARD</h3>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+              ${allPlayers.map((p, i) => `
+                <div class="rival-card flex items-center gap-2 p-2 rounded-lg ${p.isPlayer ? 'bg-blue-900/50 border border-blue-500' : 'bg-gray-900/50 border border-gray-700'}">
+                  <span class="text-lg">${i === 0 ? '👑' : ''} ${p.emoji}</span>
+                  <div class="flex-1 min-w-0">
+                    <div class="text-xs font-bold truncate">${p.name}</div>
+                    <div class="text-xs ${p.isPlayer ? 'text-blue-300' : 'text-gray-400'}">$${(p.netWorth/1000).toFixed(0)}k</div>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+
+          <!-- Main Grid -->
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <!-- Property Market -->
+            <div class="lg:col-span-2 bg-gray-800/50 rounded-xl p-4 border border-gray-700">
+              <div class="flex justify-between items-center mb-3">
+                <h2 class="text-xl font-bold">🏪 Property Market</h2>
+                <div class="flex gap-1">
+                  ${['all', ...NEIGHBORHOODS.map(n => n.id)].map(id => `
+                    <button onclick="game.selectedNeighborhood='${id}';render()"
+                      class="px-2 py-1 text-xs rounded ${game.selectedNeighborhood === id ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'}">
+                      ${id === 'all' ? '🌍 All' : NEIGHBORHOODS.find(n => n.id === id)?.name.split(' ')[0] || id}
+                    </button>
+                  `).join('')}
+                </div>
               </div>
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                ${gameState.availableProperties.map(p => `
-                  <div class="border-2 ${typeColors[p.type]} rounded-xl p-4 shadow-md hover:shadow-xl transition-all">
-                    <div class="text-4xl text-center mb-2">${p.image}</div>
-                    <h3 class="font-bold text-lg truncate">${p.name}</h3>
-                    <p class="text-xs text-gray-500 truncate">${p.address}</p>
-                    <p class="text-xs text-gray-600 mt-1 line-clamp-2">${p.description}</p>
-                    <div class="mt-3 space-y-1">
-                      <div class="flex justify-between text-sm">
-                        <span>Price:</span>
-                        <span class="font-bold text-green-700">$${p.currentPrice.toLocaleString()}</span>
-                      </div>
-                      <div class="flex justify-between text-sm">
-                        <span>Rent/turn:</span>
-                        <span class="font-bold text-blue-700">$${p.rentIncome.toLocaleString()}</span>
-                      </div>
-                      <div class="flex justify-between text-sm">
-                        <span>Condition:</span>
-                        <span class="${p.condition >= 70 ? 'text-green-600' : p.condition >= 40 ? 'text-yellow-600' : 'text-red-600'}">${p.condition}%</span>
-                      </div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 max-h-96 overflow-y-auto pr-2">
+                ${game.availableProperties
+                  .filter(p => game.selectedNeighborhood === 'all' || p.neighborhood === game.selectedNeighborhood)
+                  .map(p => `
+                  <div class="bg-gray-900 rounded-xl p-3 border ${p.isHot ? 'border-orange-500 hot-property' : 'border-gray-700'} hover:border-gray-500 transition-all">
+                    ${p.isHot ? '<div class="text-xs text-orange-400 font-bold mb-1">🔥 HOT DEAL!</div>' : ''}
+                    <div class="flex justify-between items-start">
+                      <span class="text-2xl">${p.emoji}</span>
+                      <span class="text-xs px-2 py-0.5 rounded bg-gray-700">${p.neighborhoodData.name.split(' ')[0]}</span>
                     </div>
-                    <button onclick="buyProperty('${p.id}')" ${gameState.cash < p.currentPrice ? 'disabled' : ''}
-                      class="w-full mt-3 py-2 rounded-lg font-bold transition-all ${gameState.cash >= p.currentPrice ? 'bg-green-600 hover:bg-green-700 text-white cursor-pointer' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}">
-                      ${gameState.cash >= p.currentPrice ? '🏠 Buy Property' : "💸 Can't Afford"}
+                    <h3 class="font-bold mt-1">${p.name}</h3>
+                    <div class="text-xs text-gray-400 mt-1 space-y-0.5">
+                      <div class="flex justify-between"><span>Price:</span><span class="text-green-400 font-bold">$${p.currentPrice.toLocaleString()}</span></div>
+                      <div class="flex justify-between"><span>Rent:</span><span class="text-blue-400">$${p.rentIncome.toLocaleString()}/turn</span></div>
+                      <div class="flex justify-between"><span>Condition:</span><span class="${p.condition >= 70 ? 'text-green-400' : p.condition >= 40 ? 'text-yellow-400' : 'text-red-400'}">${p.condition}%</span></div>
+                      <div class="flex justify-between"><span>ROI:</span><span class="text-purple-400">${((p.rentIncome / p.currentPrice) * 100).toFixed(1)}%</span></div>
+                    </div>
+                    <button onclick="buyProperty('${p.id}')" ${game.cash < p.currentPrice ? 'disabled' : ''}
+                      class="w-full mt-2 py-1.5 rounded-lg font-bold text-sm transition-all ${game.cash >= p.currentPrice ? 'bg-green-600 hover:bg-green-500' : 'bg-gray-700 text-gray-500 cursor-not-allowed'}">
+                      ${game.cash >= p.currentPrice ? '🔑 Buy' : '💸 Need $' + ((p.currentPrice - game.cash)/1000).toFixed(0) + 'k'}
                     </button>
                   </div>
                 `).join('')}
               </div>
             </div>
 
-            <!-- Portfolio -->
-            <div class="bg-white rounded-2xl p-6 shadow-lg">
-              <div class="flex justify-between items-center mb-4">
-                <h2 class="text-2xl font-bold text-gray-800">📋 Your Portfolio</h2>
-                <span class="text-sm text-gray-500">${gameState.ownedProperties.length} properties</span>
-              </div>
-              ${gameState.ownedProperties.length === 0 ? `
-                <div class="text-center py-12 text-gray-500">
-                  <div class="text-5xl mb-4">🏚️</div>
-                  <p>No properties yet!</p>
-                  <p class="text-sm">Buy from the market to earn rent.</p>
+            <!-- Your Portfolio + Actions -->
+            <div class="space-y-4">
+              <!-- Quick Actions -->
+              <div class="bg-gray-800/50 rounded-xl p-4 border border-gray-700">
+                <h3 class="font-bold mb-3">⚡ Actions</h3>
+                <div class="space-y-2">
+                  <button onclick="nextTurn()" class="w-full py-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 rounded-xl font-bold text-lg transition-all">
+                    ⏭️ End Turn
+                  </button>
+                  <div class="grid grid-cols-2 gap-2">
+                    <button onclick="takeLoan(50000)" ${game.loan >= game.netWorth * CONFIG.MAX_LOAN_MULTIPLIER ? 'disabled' : ''}
+                      class="py-2 bg-orange-600 hover:bg-orange-500 rounded-lg text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed">
+                      🏦 Loan $50k
+                    </button>
+                    <button onclick="payLoan(game.loan)" ${game.loan <= 0 || game.cash < game.loan ? 'disabled' : ''}
+                      class="py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed">
+                      💳 Pay Loan
+                    </button>
+                  </div>
                 </div>
-              ` : `
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 max-h-96 overflow-y-auto">
-                  ${gameState.ownedProperties.map(p => {
+                ${game.loan > 0 ? `
+                  <div class="mt-2 text-xs text-orange-400">
+                    ⚠️ Loan due in ${game.loanTurnsRemaining} turns (${Math.round(CONFIG.LOAN_INTEREST * 100)}% interest/turn)
+                  </div>
+                ` : ''}
+              </div>
+
+              <!-- Your Properties -->
+              <div class="bg-gray-800/50 rounded-xl p-4 border border-gray-700">
+                <h3 class="font-bold mb-3">📋 Your Portfolio (${game.ownedProperties.length})</h3>
+                <div class="space-y-2 max-h-72 overflow-y-auto pr-1">
+                  ${game.ownedProperties.length === 0 ? `
+                    <div class="text-center py-6 text-gray-500">
+                      <div class="text-3xl mb-2">🏚️</div>
+                      <p class="text-sm">No properties yet!</p>
+                    </div>
+                  ` : game.ownedProperties.map(p => {
                     const profit = p.currentPrice - p.purchasePrice;
-                    const profitPercent = Math.round((profit / p.purchasePrice) * 100);
-                    const repairCost = Math.round((100 - p.condition) * p.basePrice * 0.002);
+                    const profitPct = Math.round((profit / p.purchasePrice) * 100);
+                    const repairCost = Math.round((100 - p.condition) * p.currentPrice * 0.003);
                     return `
-                      <div class="border-2 border-yellow-500 bg-yellow-50 rounded-xl p-4 shadow-md">
+                      <div class="bg-gray-900 rounded-lg p-3 border border-gray-700">
                         <div class="flex justify-between items-start">
-                          <div class="text-3xl">${p.image}</div>
-                          <span class="text-xs px-2 py-1 rounded ${profit >= 0 ? 'bg-green-200 text-green-800' : 'bg-red-200 text-red-800'}">
-                            ${profit >= 0 ? '+' : ''}${profitPercent}%
-                          </span>
-                        </div>
-                        <h3 class="font-bold text-lg truncate mt-1">${p.name}</h3>
-                        <p class="text-xs text-gray-500">Owned ${p.turnsOwned} turns</p>
-                        <div class="mt-2 space-y-1">
-                          <div class="flex justify-between text-sm">
-                            <span>Value:</span>
-                            <span class="font-bold">$${p.currentPrice.toLocaleString()}</span>
-                          </div>
-                          <div class="flex justify-between text-sm">
-                            <span>Rent:</span>
-                            <span class="text-blue-700">$${p.rentIncome.toLocaleString()}/turn</span>
-                          </div>
-                          <div class="flex justify-between text-sm items-center">
-                            <span>Condition:</span>
-                            <div class="flex items-center gap-2">
-                              <div class="w-16 bg-gray-200 rounded-full h-2">
-                                <div class="h-full rounded-full ${p.condition >= 70 ? 'bg-green-500' : p.condition >= 40 ? 'bg-yellow-500' : 'bg-red-500'}" style="width: ${p.condition}%"></div>
-                              </div>
-                              <span class="${p.condition >= 70 ? 'text-green-600' : p.condition >= 40 ? 'text-yellow-600' : 'text-red-600'}">${p.condition}%</span>
+                          <div class="flex items-center gap-2">
+                            <span class="text-xl">${p.emoji}</span>
+                            <div>
+                              <div class="font-bold text-sm">${p.name}</div>
+                              <div class="text-xs text-gray-400">$${p.currentPrice.toLocaleString()} • $${p.rentIncome.toLocaleString()}/turn</div>
                             </div>
                           </div>
+                          <span class="text-xs px-1.5 py-0.5 rounded ${profit >= 0 ? 'bg-green-900 text-green-400' : 'bg-red-900 text-red-400'}">
+                            ${profit >= 0 ? '+' : ''}${profitPct}%
+                          </span>
                         </div>
-                        <div class="flex gap-2 mt-3">
-                          <button onclick="sellProperty('${p.id}')" class="flex-1 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-bold text-sm">💰 Sell</button>
-                          ${p.condition < 100 ? `
-                            <button onclick="repairProperty('${p.id}')" ${gameState.cash < repairCost ? 'disabled' : ''}
-                              class="flex-1 py-2 rounded-lg font-bold text-sm ${gameState.cash >= repairCost ? 'bg-blue-500 hover:bg-blue-600 text-white' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}">
-                              🔧 $${repairCost.toLocaleString()}
-                            </button>
-                          ` : ''}
+                        <div class="mt-2 flex items-center gap-2">
+                          <div class="flex-1 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                            <div class="h-full ${p.condition >= 70 ? 'bg-green-500' : p.condition >= 40 ? 'bg-yellow-500' : 'bg-red-500'}" style="width:${p.condition}%"></div>
+                          </div>
+                          <span class="text-xs text-gray-400">${p.condition}%</span>
+                        </div>
+                        ${p.upgrades?.length ? `<div class="mt-1 text-xs text-purple-400">⬆️ ${p.upgrades.map(u => UPGRADES.find(up => up.id === u)?.name.split(' ')[1] || u).join(', ')}</div>` : ''}
+                        <div class="mt-2 flex gap-1.5 flex-wrap">
+                          <button onclick="sellProperty('${p.id}')" class="px-2 py-1 bg-red-600 hover:bg-red-500 rounded text-xs font-bold">💰 Sell</button>
+                          ${p.condition < 100 ? `<button onclick="repairProperty('${p.id}')" ${game.cash < repairCost ? 'disabled' : ''} class="px-2 py-1 bg-blue-600 hover:bg-blue-500 rounded text-xs font-bold disabled:opacity-50">🔧 $${(repairCost/1000).toFixed(0)}k</button>` : ''}
+                          ${UPGRADES.filter(u => !p.upgrades?.includes(u.id)).slice(0, 2).map(u => {
+                            const cost = Math.round(p.currentPrice * u.cost);
+                            return `<button onclick="upgradeProperty('${p.id}','${u.id}')" ${game.cash < cost ? 'disabled' : ''} class="px-2 py-1 bg-purple-600 hover:bg-purple-500 rounded text-xs font-bold disabled:opacity-50">${u.name.split(' ')[0]} $${(cost/1000).toFixed(0)}k</button>`;
+                          }).join('')}
                         </div>
                       </div>
                     `;
                   }).join('')}
                 </div>
-              `}
+              </div>
+
+              <!-- Achievements -->
+              <div class="bg-gray-800/50 rounded-xl p-4 border border-gray-700">
+                <h3 class="font-bold mb-2">🏆 Achievements (${game.achievements.length}/${ACHIEVEMENTS.length})</h3>
+                <div class="flex flex-wrap gap-1">
+                  ${ACHIEVEMENTS.map(a => `
+                    <span title="${a.description}" class="text-lg ${game.achievements.includes(a.id) ? '' : 'opacity-30 grayscale'}">${a.name.split(' ')[0]}</span>
+                  `).join('')}
+                </div>
+              </div>
             </div>
           </div>
 
-          <!-- Actions -->
-          <div class="mt-6 flex justify-center gap-4">
-            <button onclick="nextTurn()" ${gameState.gameStatus !== 'playing' ? 'disabled' : ''}
-              class="px-8 py-4 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white rounded-xl font-bold text-xl shadow-lg transition-all disabled:opacity-50">
-              ⏭️ End Turn & Collect Rent
-            </button>
-            <button onclick="restartGame()" class="px-6 py-4 bg-gray-500 hover:bg-gray-600 text-white rounded-xl font-bold shadow-lg">
-              🔄 Restart
-            </button>
-          </div>
-
-          <!-- Tips -->
-          <div class="mt-6 bg-blue-50 rounded-xl p-4 text-center">
-            <p class="text-sm text-blue-800">
-              💡 <strong>Tips:</strong> Buy low, sell high! Keep properties in good condition for max rent. Watch market trends!
-            </p>
+          <!-- Footer -->
+          <div class="mt-4 text-center">
+            <button onclick="restartGame()" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm">🔄 Restart Game</button>
           </div>
         </div>
 
         <!-- Event Modal -->
-        ${gameState.currentEvent ? `
-          <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div class="animate-bounce-once ${gameState.currentEvent.type === 'positive' ? 'bg-green-100 border-green-500' : 'bg-red-100 border-red-500'} border-4 rounded-2xl p-6 max-w-md w-full shadow-2xl">
-              <h2 class="text-2xl font-bold text-center mb-4">${gameState.currentEvent.title}</h2>
-              <p class="text-center text-gray-700 mb-6">${gameState.currentEvent.description}</p>
-              <button onclick="dismissEvent()" class="w-full py-3 bg-gray-800 hover:bg-gray-900 text-white rounded-xl font-bold text-lg">Continue</button>
+        ${game.currentEvent ? `
+          <div class="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+            <div class="slide-in bg-gradient-to-br ${
+              game.currentEvent.type === 'positive' ? 'from-green-900 to-green-800 border-green-500' :
+              game.currentEvent.type === 'negative' || game.currentEvent.type === 'disaster' ? 'from-red-900 to-red-800 border-red-500' :
+              'from-yellow-900 to-yellow-800 border-yellow-500'
+            } border-2 rounded-2xl p-6 max-w-md w-full shadow-2xl">
+              <h2 class="text-2xl font-black text-center mb-2">${game.currentEvent.title}</h2>
+              <p class="text-center text-gray-200 mb-4">${game.currentEvent.description}</p>
+              <div class="bg-black/30 rounded-xl p-3 mb-4 text-center">
+                <p class="font-bold">${game.currentEvent.result}</p>
+              </div>
+              <button onclick="dismissEvent()" class="w-full py-3 bg-white text-gray-900 rounded-xl font-bold text-lg hover:bg-gray-200">
+                Continue
+              </button>
+            </div>
+          </div>
+        ` : ''}
+
+        <!-- Pending Offer Modal -->
+        ${game.pendingOffer ? `
+          <div class="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+            <div class="slide-in bg-gradient-to-br from-green-900 to-emerald-800 border-2 border-green-500 rounded-2xl p-6 max-w-md w-full shadow-2xl">
+              <h2 class="text-2xl font-black text-center mb-2">💰 BUYER OFFER!</h2>
+              <p class="text-center mb-4">Someone wants to buy <strong>${game.pendingOffer.property.name}</strong>!</p>
+              <div class="bg-black/30 rounded-xl p-4 mb-4 text-center">
+                <div class="text-3xl font-black text-green-400">$${game.pendingOffer.amount.toLocaleString()}</div>
+                <div class="text-sm text-gray-300">You paid: $${game.pendingOffer.property.purchasePrice.toLocaleString()}</div>
+                <div class="text-lg font-bold text-yellow-400">Profit: $${(game.pendingOffer.amount - game.pendingOffer.property.purchasePrice).toLocaleString()}</div>
+              </div>
+              <div class="flex gap-3">
+                <button onclick="acceptOffer()" class="flex-1 py-3 bg-green-600 hover:bg-green-500 rounded-xl font-bold">✅ Accept</button>
+                <button onclick="declineOffer()" class="flex-1 py-3 bg-gray-600 hover:bg-gray-500 rounded-xl font-bold">❌ Decline</button>
+              </div>
+            </div>
+          </div>
+        ` : ''}
+
+        <!-- Auction Modal -->
+        ${game.auction ? `
+          <div class="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+            <div class="slide-in bg-gradient-to-br from-purple-900 to-indigo-800 border-2 border-purple-500 rounded-2xl p-6 max-w-md w-full shadow-2xl">
+              <h2 class="text-2xl font-black text-center mb-2">🔨 AUCTION!</h2>
+              <div class="text-center mb-4">
+                <div class="text-4xl mb-2">${game.auction.property.emoji}</div>
+                <div class="font-bold text-xl">${game.auction.property.name}</div>
+                <div class="text-sm text-gray-300">${game.auction.property.neighborhoodData.name}</div>
+              </div>
+              <div class="bg-black/30 rounded-xl p-4 mb-4">
+                <div class="flex justify-between mb-2">
+                  <span>Starting Bid:</span>
+                  <span class="font-bold">$${game.auction.minBid.toLocaleString()}</span>
+                </div>
+                <div class="flex justify-between mb-2">
+                  <span>Rent Income:</span>
+                  <span class="text-blue-400">$${game.auction.property.rentIncome.toLocaleString()}/turn</span>
+                </div>
+                <div class="flex justify-between">
+                  <span>Your Cash:</span>
+                  <span class="text-green-400">$${game.cash.toLocaleString()}</span>
+                </div>
+              </div>
+              <div class="text-sm text-center text-gray-300 mb-3">
+                ${game.rivals.filter(r => r.cash >= game.auction.minBid).map(r => `${r.emoji}`).join(' ')} are also interested!
+              </div>
+              <div class="grid grid-cols-3 gap-2 mb-3">
+                ${[1, 1.2, 1.5].map(mult => {
+                  const bid = Math.round(game.auction.minBid * mult);
+                  return `<button onclick="placeBid(${bid})" ${game.cash < bid ? 'disabled' : ''} class="py-2 bg-purple-600 hover:bg-purple-500 rounded-lg font-bold text-sm disabled:opacity-50">$${(bid/1000).toFixed(0)}k</button>`;
+                }).join('')}
+              </div>
+              <button onclick="skipAuction()" class="w-full py-2 bg-gray-600 hover:bg-gray-500 rounded-xl font-bold">👋 Skip Auction</button>
             </div>
           </div>
         ` : ''}
 
         <!-- Game Over Modal -->
-        ${gameState.gameStatus !== 'playing' ? `
-          <div class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">
-            <div class="${gameState.gameStatus === 'won' ? 'bg-gradient-to-br from-yellow-400 to-orange-500' : 'bg-gradient-to-br from-gray-700 to-gray-900'} rounded-3xl p-8 max-w-md w-full shadow-2xl text-center">
-              <div class="text-6xl mb-4">${gameState.gameStatus === 'won' ? '🏆' : '💸'}</div>
-              <h2 class="text-3xl font-bold mb-2 ${gameState.gameStatus === 'won' ? 'text-gray-900' : 'text-white'}">
-                ${gameState.gameStatus === 'won' ? 'You Win!' : 'Game Over'}
-              </h2>
-              <p class="text-lg mb-4 ${gameState.gameStatus === 'won' ? 'text-gray-800' : 'text-gray-300'}">
-                ${gameState.gameStatus === 'won' ? 'You became a Real Estate Tycoon!' : 'Better luck next time!'}
+        ${game.gameStatus !== 'playing' ? `
+          <div class="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4">
+            <div class="slide-in ${game.gameStatus === 'won' ? 'bg-gradient-to-br from-yellow-600 to-orange-600 glow-gold' : 'bg-gradient-to-br from-gray-800 to-gray-900'} rounded-3xl p-8 max-w-lg w-full shadow-2xl text-center">
+              <div class="text-6xl mb-4">${game.gameStatus === 'won' ? '🏆' : '💸'}</div>
+              <h2 class="text-4xl font-black mb-2">${game.gameStatus === 'won' ? 'YOU WIN!' : 'GAME OVER'}</h2>
+              <p class="text-xl mb-6 ${game.gameStatus === 'won' ? 'text-yellow-100' : 'text-gray-400'}">
+                ${game.gameStatus === 'won' ? 'You became a Real Estate Tycoon!' : 'Better luck next time!'}
               </p>
-              <div class="${gameState.gameStatus === 'won' ? 'bg-white bg-opacity-50' : 'bg-gray-800'} rounded-xl p-4 mb-6">
+              <div class="bg-black/30 rounded-xl p-4 mb-6">
                 <div class="grid grid-cols-2 gap-4">
                   <div>
-                    <div class="text-sm ${gameState.gameStatus === 'won' ? 'text-gray-700' : 'text-gray-400'}">Final Net Worth</div>
-                    <div class="text-2xl font-bold ${gameState.gameStatus === 'won' ? 'text-green-700' : 'text-green-400'}">$${gameState.netWorth.toLocaleString()}</div>
+                    <div class="text-sm text-gray-400">Final Net Worth</div>
+                    <div class="text-2xl font-black text-green-400">$${game.netWorth.toLocaleString()}</div>
                   </div>
                   <div>
-                    <div class="text-sm ${gameState.gameStatus === 'won' ? 'text-gray-700' : 'text-gray-400'}">Turns Played</div>
-                    <div class="text-2xl font-bold ${gameState.gameStatus === 'won' ? 'text-gray-900' : 'text-white'}">${gameState.turn}</div>
+                    <div class="text-sm text-gray-400">Final Rank</div>
+                    <div class="text-2xl font-black">#${game.finalRank || (game.gameStatus === 'won' ? 1 : 4)}</div>
+                  </div>
+                  <div>
+                    <div class="text-sm text-gray-400">Properties Owned</div>
+                    <div class="text-2xl font-black">${game.ownedProperties.length}</div>
+                  </div>
+                  <div>
+                    <div class="text-sm text-gray-400">Achievements</div>
+                    <div class="text-2xl font-black">${game.achievements.length}/${ACHIEVEMENTS.length}</div>
                   </div>
                 </div>
               </div>
-              <button onclick="restartGame()" class="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xl shadow-lg">
+              <button onclick="restartGame()" class="w-full py-4 bg-blue-600 hover:bg-blue-500 rounded-xl font-bold text-xl">
                 🔄 Play Again
               </button>
             </div>
@@ -520,8 +949,9 @@
       `;
     }
 
-    // Initialize
-    gameState.availableProperties = generateMarketProperties(4);
+    // ==================== INIT ====================
+    game = createNewGame();
+    game.availableProperties = generateMarket(6);
     render();
   </script>
 </body>
