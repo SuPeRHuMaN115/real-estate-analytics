@@ -1,0 +1,217 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Main property model - the subject property or comp
+model Property {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Basic Info
+  name        String?  // Property name or identifier
+  address     String
+  city        String
+  state       String
+  zipCode     String
+  county      String?
+
+  // Property Details
+  propertyType    PropertyType
+  propertySubType String?      // e.g., "Garden-style", "Mid-rise", "High-rise"
+  yearBuilt       Int?
+  yearRenovated   Int?
+
+  // Size Metrics
+  units           Int?         // For multifamily
+  squareFeet      Int?         // Total building SF
+  lotSizeSqFt     Int?         // Land size
+  lotSizeAcres    Float?
+
+  // Unit Mix (for multifamily)
+  avgUnitSize     Int?         // Average unit SF
+  unitMix         String?      // JSON string of unit breakdown
+
+  // Financial Data
+  listPrice       Float?
+  salePrice       Float?
+  pricePerUnit    Float?
+  pricePerSqFt    Float?
+
+  // Income
+  grossPotentialRent  Float?   // GPR
+  effectiveGrossIncome Float?  // EGI
+  otherIncome         Float?
+  totalIncome         Float?
+  vacancyRate         Float?   // As decimal (0.05 = 5%)
+
+  // Expenses
+  operatingExpenses   Float?
+  expenseRatio        Float?   // As decimal
+  taxes               Float?
+  insurance           Float?
+  utilities           Float?
+  management          Float?
+  maintenance         Float?
+  reserves            Float?
+
+  // Investment Metrics
+  noi             Float?       // Net Operating Income
+  capRate         Float?       // As decimal (0.06 = 6%)
+  cashOnCash      Float?       // As decimal
+  dscr            Float?       // Debt Service Coverage Ratio
+  grm             Float?       // Gross Rent Multiplier
+
+  // Condition & Quality
+  condition       Condition?
+  quality         Quality?
+  occupancy       Float?       // As decimal (0.95 = 95%)
+
+  // Amenities
+  amenities       String?      // JSON string of amenities
+
+  // Market Data
+  marketRentPsf   Float?       // Market rent per SF
+  marketCapRate   Float?
+
+  // Additional Info
+  notes           String?
+  source          String?      // Where the data came from
+  imageUrl        String?
+
+  // Flags
+  isSubjectProperty Boolean @default(false)
+
+  // Relations
+  subjectComps    CompAnalysis[] @relation("SubjectProperty")
+  compProperties  CompAnalysis[] @relation("CompProperty")
+  valuations      Valuation[]
+
+  @@index([city, state])
+  @@index([propertyType])
+  @@index([isSubjectProperty])
+}
+
+// Comp analysis linking subject to comps
+model CompAnalysis {
+  id              String   @id @default(cuid())
+  createdAt       DateTime @default(now())
+
+  // Relations
+  subjectId       String
+  subject         Property @relation("SubjectProperty", fields: [subjectId], references: [id], onDelete: Cascade)
+  compId          String
+  comp            Property @relation("CompProperty", fields: [compId], references: [id], onDelete: Cascade)
+
+  // Analysis
+  distanceMiles   Float?
+  similarityScore Float?   // 0-100 score of how similar
+
+  // Adjustments (positive = comp is better, negative = comp is worse)
+  locationAdj     Float?   // Dollar adjustment
+  sizeAdj         Float?
+  ageAdj          Float?
+  conditionAdj    Float?
+  amenitiesAdj    Float?
+  otherAdj        Float?
+  totalAdj        Float?
+
+  adjustedPrice   Float?   // Comp price after adjustments
+  adjustedPpu     Float?   // Adjusted price per unit
+  adjustedPsf     Float?   // Adjusted price per SF
+
+  // AI Analysis
+  aiNotes         String?  // AI-generated comparison notes
+  aiConfidence    Float?   // AI confidence in the comp (0-1)
+
+  @@unique([subjectId, compId])
+  @@index([subjectId])
+  @@index([compId])
+}
+
+// Valuation results
+model Valuation {
+  id              String   @id @default(cuid())
+  createdAt       DateTime @default(now())
+
+  propertyId      String
+  property        Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  // Valuation Approaches
+  salesCompValue      Float?   // Sales comparison approach
+  incomeValue         Float?   // Income approach (NOI / Cap Rate)
+  costValue           Float?   // Cost approach (rare for income property)
+
+  // Final Values
+  estimatedValue      Float
+  valueLow            Float?   // Range low
+  valueHigh           Float?   // Range high
+  confidence          Float?   // Confidence level 0-1
+
+  // Per-unit metrics
+  valuePerUnit        Float?
+  valuePerSqFt        Float?
+
+  // Methodology
+  methodology         String?  // JSON of weights/approach used
+
+  // AI Analysis
+  aiSummary           String?  // AI-generated valuation summary
+  aiRecommendations   String?  // AI recommendations
+  marketAnalysis      String?  // AI market analysis
+
+  @@index([propertyId])
+}
+
+// Offering Memorandum storage
+model OfferingMemorandum {
+  id              String   @id @default(cuid())
+  createdAt       DateTime @default(now())
+
+  propertyId      String?
+  propertyName    String
+  rawText         String?  // Raw extracted text
+  parsedData      String?  // JSON of parsed fields
+  fileUrl         String?  // Original file location
+
+  // Extraction status
+  extractionStatus String  @default("pending") // pending, processing, completed, failed
+  extractionNotes  String?
+
+  @@index([propertyId])
+}
+
+enum PropertyType {
+  MULTIFAMILY
+  OFFICE
+  RETAIL
+  INDUSTRIAL
+  MIXED_USE
+  LAND
+  HOTEL
+  SELF_STORAGE
+  SENIOR_LIVING
+  STUDENT_HOUSING
+  SINGLE_FAMILY
+  OTHER
+}
+
+enum Condition {
+  EXCELLENT
+  GOOD
+  AVERAGE
+  FAIR
+  POOR
+}
+
+enum Quality {
+  CLASS_A
+  CLASS_B
+  CLASS_C
+  CLASS_D
+}
